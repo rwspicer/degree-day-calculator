@@ -1,0 +1,6 @@
+numpy
+gdal
+pyyaml
+matplotlib
+jupyter
+scipy
