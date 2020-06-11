@@ -10,7 +10,7 @@ from datetime import datetime
 
 import numpy as np
 
-from calc_degree_days import calc_gird_degree_days, create_day_array
+from calc_degree_days import calc_grid_degree_days, create_day_array
 from multigrids.tools import load_and_create, get_raster_metadata
 from multigrids import TemporalGrid
 import CLILib
@@ -63,7 +63,7 @@ def utility ():
             '--start-year'
             
             ],
-            ['--num-processes', '--mask-val', '--verbose']
+            ['--num-processes', '--mask-val', '--verbose','--temp-dir']
         
         )
     except (CLILib.CLILibHelpRequestedError, CLILib.CLILibMandatoryError) as E:
@@ -121,13 +121,14 @@ def utility ():
     raster_metadata = get_raster_metadata(ex_raster)
     monthly_temps.config['raster_metadata'] = raster_metadata
 
-    mask_val = -9999
-    if arguments['--mask-val'] is None:
-        mask_val = int(arguments['--mask-val'])
+    mask_val = -3.39999999999999996e+38
+#    if arguments['--mask-val'] is None:
+#        mask_val = int(arguments['--mask-val'])
 
 
-    idx = monthly_temps.grids == mask_val
+    idx = monthly_temps.grids < -1000
     monthly_temps.grids[idx] = np.nan
+
 
 
     grid_shape = monthly_temps.config['grid_shape']
@@ -162,7 +163,7 @@ def utility ():
     )
     log['verbose'] = verbosity
 
-    print(monthly_temps.grids.shape, fdd.grids.shape)
+#     print(monthly_temps.grids.shape, fdd.grids.shape)
     calc_grid_degree_days(
             days, 
             monthly_temps.grids, 
@@ -170,7 +171,7 @@ def utility ():
             fdd.grids, 
             grid_shape, 
             num_process = num_processes,
-            log=log
+            log=log,
         )
 
 

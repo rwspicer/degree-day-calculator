@@ -45,9 +45,13 @@ def calc_degree_days(
         thawing and freezing degree day lists
     """
     # print (day_array)
+#     if np.isnan(temp_array).all():
+#         return np.zeros(115) - np.inf,np.zeros(115) - np.inf
     # print (temp_array)
+#     print('processing element', idx)
     spline = interpolate.UnivariateSpline(day_array, temp_array)
     if not expected_roots is None and len(spline.roots()) != expected_roots:
+        print('reprocessing element', idx)
         # print (len(spline.roots()))
         i = 1
         while len(spline.roots()) != expected_roots:
@@ -60,8 +64,9 @@ def calc_degree_days(
                 )
                 if log['verbose'] >= 1:
                     print(log['Spline Errors'][-1])
-                # print ('expected roots is not the same as spline.roots()')
-                return np.zeros(115) - np.inf,np.zeros(115) - np.inf
+                print('expected root mismatch at element ' + str(idx))
+                print ('--->expected roots is not the same as spline.roots()', 'er', expected_roots, 'sr', len(spline.roots()))
+                return list(np.zeros(expected_roots//2) - np.inf),list(np.zeros((expected_roots//2) - 1) - np.inf)
 
     tdd = []
     fdd = []
@@ -71,7 +76,7 @@ def calc_degree_days(
             tdd.append(val)
         else:
             fdd.append(val)
-
+#     print(len(tdd), len(fdd))
     return tdd, fdd
 
 
