@@ -61,18 +61,19 @@ def calc_degree_days(
                 if log['verbose'] >= 1:
                     print(log['Spline Errors'][-1])
                 # print ('expected roots is not the same as spline.roots()')
-                return np.zeros(115) - np.inf,np.zeros(115) - np.inf
+                return list(np.zeros(expected_roots//2) - np.inf),list(np.zeros((expected_roots//2) - 1) - np.inf)
 
     tdd = []
     fdd = []
     for rdx in range(len(spline.roots())-1):
         val = spline.integral(spline.roots()[rdx], spline.roots()[rdx+1])
+        print(val)
         if val > 0:
             tdd.append(val)
         else:
             fdd.append(val)
-
-    return tdd, fdd
+    print(len(tdd), len(fdd))
+    return tdd, fdd, spline
 
 
 def calc_and_store  (
@@ -107,10 +108,14 @@ def calc_and_store  (
     tdd_grid[:,index] = tdd
     ## FDD array is not long enough (len(tdd) - 1) on its own, so we use the 
     # first winter value twice this works because the the spline curves are
-    # created will always have a first root going from positive to negative
-    # This works for northern alaska and should not be assumed else where.
+    # created will always have a first root going from negative to positistve
+    # This works for northern alaska and should not be assumed else where.\
     ##
-    fdd_grid[:,index] = [fdd[0]] + fdd 
+
+    ### see the notes
+    ##
+    fdd_grid[:,index] = fdd + [fdd[-1]] # I.E. if last year of data is 2015, the 
+                                        # fdd for 2015 is set to fdd for 2014
     lock.release()
 
 
@@ -191,7 +196,7 @@ def calc_grid_degree_days (
                 print(log['Element Messages'][-1])
             continue
         Process(target=calc_and_store,
-            name = "cdd elem " + str(idx),
+            name = "calc degree day at elem " + str(idx),
             args=(
                 idx,day_array,temp_grid[:,idx], tdd_grid, fdd_grid, w_lock, log
             )
