@@ -51,7 +51,7 @@ def calc_degree_days(
 #     print('processing element', idx)
     spline = interpolate.UnivariateSpline(day_array, temp_array)
     if not expected_roots is None and len(spline.roots()) != expected_roots:
-        print('reprocessing element', idx)
+        # print('reprocessing element', idx)
         # print (len(spline.roots()))
         i = 1
         while len(spline.roots()) != expected_roots:
@@ -64,15 +64,15 @@ def calc_degree_days(
                 )
                 if log['verbose'] >= 1:
                     print(log['Spline Errors'][-1])
-                print('expected root mismatch at element ' + str(idx))
-                print ('--->expected roots is not the same as spline.roots()', 'er', expected_roots, 'sr', len(spline.roots()))
+                # print('expected root mismatch at element ' + str(idx))
+                # print ('--->expected roots is not the same as spline.roots()', 'er', expected_roots, 'sr', len(spline.roots()))
                 return list(np.zeros(expected_roots//2) - np.inf),list(np.zeros((expected_roots//2) - 1) - np.inf)
 
     tdd = []
     fdd = []
     for rdx in range(len(spline.roots())-1):
         val = spline.integral(spline.roots()[rdx], spline.roots()[rdx+1])
-        print(val)
+        # print(val)
         if val > 0:
             tdd.append(val)
         else:

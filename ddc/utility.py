@@ -17,6 +17,8 @@ import CLILib
 
 from multiprocessing import Manager, Lock
 
+from sort import sort_snap_files
+
 def utility ():
     """Utility for calculating the freezing and thawing degree-days and saving
     them as tiffs
@@ -41,6 +43,12 @@ def utility ():
     --verbosity: string
         "log", "warn" for logging all messages, or only warn messages. If
         not used no messages are printed.
+    --sort-method
+        "default" or "snap" to specify the method for sorting method used
+        for loading tiff files, default uses pythons `sorted` function, 
+        snap uses a function that sorts the files named via snaps month/
+        year naming  convention (...01_1901.tif, ...01_1902.tif, ..., 
+        ...12_2005.tif, ...12_2006.tif) to year/month order.
     
     Example
     -------
@@ -63,7 +71,12 @@ def utility ():
             '--start-year'
             
             ],
-            ['--num-processes', '--mask-val', '--verbose','--temp-dir']
+            ['--num-processes', 
+             '--mask-val', 
+             '--verbose',
+             '--temp-dir',
+             '--sort-method'
+            ]
         
         )
     except (CLILib.CLILibHelpRequestedError, CLILib.CLILibMandatoryError) as E:
@@ -78,8 +91,25 @@ def utility ():
     else:
         verbosity = 0
 
+    sort_method = "Using default sort function"
+    sort_fn = sorted
+
+    if  arguments['--sort-method'].lower() == 'snap':
+        sort_method = "Using SNAP sort function"
+        sort_fn = sort_snap_files
+    elif not arguments['--sort-method']is None and\
+        arguments['--sort-method'].lower() != "default":
+        print("invalid --sort-method option")
+        print("run utility.py --help to see valid options")
+        print("exiting")
+        return
+    
+
+
     if verbosity >= 2:
+       
         print('Seting up input...')
+        print('\t', sort_method)
     
 
     start_year = int(arguments['--start-year'])
@@ -106,6 +136,8 @@ def utility ():
     load_params = {
             "method": "tiff",
             "directory": arguments['--in-temperature'],
+            "sort_func": sort_fn,
+            "verbose": True if verbosity >= 2 else False
         }
     create_params = {
         "name": "monthly temperatures",

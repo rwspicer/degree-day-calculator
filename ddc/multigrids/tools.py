@@ -186,6 +186,11 @@ def tiffs_to_array (
     files = glob.glob(path)
     files = sort_func(files)
 
+    if verbose:
+        print ("Displaying First 15 sorted files:")
+        for f in files[:15]:
+            print('\t', f)
+
     shape = None
     array = None
     for ix, fi in enumerate(files):
