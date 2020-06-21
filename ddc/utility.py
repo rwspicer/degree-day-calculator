@@ -50,15 +50,25 @@ def utility ():
         year naming  convention (...01_1901.tif, ...01_1902.tif, ..., 
         ...12_2005.tif, ...12_2006.tif) to year/month order.
     
-    Example
-    -------
+    Examples
+    --------
 
-    Calculate freezing and thawing degree-days from monthly temperature
+    Calculate freezing and thawing degree-days from monthly temperature and save 
+    results in ./fdd, and ./tdd
 
     python ddc/utility.py 
         --in-temperature=../data/V1/temperature/monthly/SP/v1/tiff/ 
         --out-fdd=./fdd --out-tdd=./tdd --start-year=1901 --mask-val=-9999 
         --num-processes=6 --verbose=log
+
+    Calculate freezing and thawing degree-days from monthly temperature from snap
+    tas_mean_C_AK_CAN_AR5_5modelAvg_rcp45_01_2006-12_2100 data and save results
+    in ./fdd, and ./tdd
+
+    python ddc/utility.py 
+        --in-temperature=../tas_mean_C_AK_CAN_AR5_5modelAvg_rcp45_01_2006-12_2100
+        --out-fdd=./fdd --out-tdd=./tdd --start-year=2006 --mask-val=-9999 
+        --num-processes=6 --verbose=log --sort_method=snap
 
     """
  
