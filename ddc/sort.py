@@ -30,7 +30,8 @@ def sort_snap_files (files):
     while len(sorted_files) < len(files):
         for month in MONTHS:
             for file in files:
-                if file.find(month + '_' + str(year)) != -1:
+                search_area = os.path.split(file)[1]
+                if search_area.find(month + '_' + str(year)) != -1:
                     sorted_files.append(file)
                     break
         year += 1

@@ -187,8 +187,12 @@ def tiffs_to_array (
     files = sort_func(files)
 
     if verbose:
-        print ("Displaying First 15 sorted files:")
+        print ("Displaying First  15 sorted files:")
         for f in files[:15]:
+            print('\t', f)
+
+        print ("Displaying last  15 sorted files:")
+        for f in files[-15:]:
             print('\t', f)
 
     shape = None
