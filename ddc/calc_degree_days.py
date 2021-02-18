@@ -10,6 +10,8 @@ from multiprocessing import Process, Lock, active_children, cpu_count
 from copy import deepcopy
 
 from datetime import datetime
+import shutil
+import gc
 
 ROW, COL = 0, 1
 
@@ -108,18 +110,25 @@ def calc_and_store  (
     tdd, fdd  = calc_degree_days(
         day_array, temp_array, expected_roots, log, index
     )
-    lock.acquire()
-    tdd_grid[:,index] = tdd
-    ## FDD array is not long enough (len(tdd) - 1) on its own, so we use the 
-    # first winter value twice this works because the the spline curves are
-    # created will always have a first root going from negative to positistve
-    # This works for northern alaska and should not be assumed else where.\
-    ##
 
-    ### see the notes
-    ##
-    fdd_grid[:,index] = fdd + [fdd[-1]] # I.E. if last year of data is 2015, the 
-                                        # fdd for 2015 is set to fdd for 2014
+    
+    lock.acquire()
+    try:
+        tdd_grid[:,index] = tdd
+        ## FDD array is not long enough (len(tdd) - 1) on its own, so we use the 
+        # first winter value twice this works because the the spline curves are
+        # created will always have a first root going from negative to positistve
+        # This works for northern alaska and should not be assumed else where.\
+        ##
+
+        ### see the notes
+        ##
+    
+        fdd_grid[:,index] = fdd + [fdd[-1]] # I.E. if last year of data is 2015, the 
+                                         # fdd for 2015 is set to fdd for 2014
+    except ValueError as e:
+        pass
+        print ("NEW_ERROR at", index,":", str(e))
     lock.release()
 
 
@@ -170,7 +179,7 @@ def calc_grid_degree_days (
     
     if num_process is None:
        num_process = cpu_count()
-    
+    total = temp_grid.shape[1]
     if type(start) is int:   
         indices = range(start, temp_grid.shape[1])
     else:
@@ -179,12 +188,13 @@ def calc_grid_degree_days (
     for idx in indices: # flatted area grid index
         while len(active_children()) >= num_process:
             continue
+        [gc.collect(i) for i in range(3)] # garbage collection
         log['Element Messages'].append(
             'calculating degree days for element ' + str(idx) + \
-            '. ~' + '%.2f' % ((idx/len(indices)) * 100) + '% complete.'
+            '. ~' + '%.2f' % ((idx/total) * 100) + '% complete.'
         )
-        if log['verbose'] >= 2:
-            print(log['Element Messages'][-1])
+        # if log['verbose'] >= 2:
+        print(log['Element Messages'][-1])
 
 
         if (temp_grid[:,idx] == -9999).all() or \
@@ -196,8 +206,8 @@ def calc_grid_degree_days (
             log['Element Messages'].append(
                 'Skipping element for missing values at ' + str(idx)
             )
-            if log['verbose'] >= 2:
-                print(log['Element Messages'][-1])
+            # if log['verbose'] >= 2:
+            print(log['Element Messages'][-1])
             continue
         Process(target=calc_and_store,
             name = "calc degree day at elem " + str(idx),
@@ -215,6 +225,11 @@ def calc_grid_degree_days (
             
         continue
     
+
+    shutil.copyfile("temp_fdd.data", "temp_fdd_precleanup.data")
+    shutil.copyfile("temp_tdd.data", "temp_tdd_precleanup.data")
+
+
     ## fix missing cells
     m_rows, m_cols = np.where(tdd_grid[0].reshape(shape) == -np.inf)   
     #~ print  m_rows, m_cols

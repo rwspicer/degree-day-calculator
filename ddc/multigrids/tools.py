@@ -179,6 +179,7 @@ def tiffs_to_array (
     sort_func used. None is returned if no files match file_name_structure
     pattern
     """
+    print (kwargs)
     if directory is None:
         raise IOError("directory dose not exist")
 
@@ -207,7 +208,12 @@ def tiffs_to_array (
             shape = len(files), rows, cols
             if verbose:
                 print('\tArray shape:', shape)
-            array = np.zeros(shape) - np.nan  #initialize to np.nan
+            array = np.memmap(
+                kwargs['filename'],
+                dtype='float32',
+                mode='w+',
+                shape=shape) 
+            # array[:] = np.nan  #initialize to np.nan
         
         array[ix][:] = grid
         
@@ -246,6 +252,12 @@ def load_and_create( load_params = {}, create_params = {}):
     
     
     data = load_function(**load_params)
+    # data = np.memmap(
+    #             kwargs['filename'],
+    #             dtype='float32',
+    #             mode='w+',
+    #             shape=shape
+    # ) 
     
     grid = create(data, **create_params)
 

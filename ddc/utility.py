@@ -72,7 +72,7 @@ def utility ():
 
     """
  
-   
+    
     try:
         arguments = CLILib.CLI([
             '--in-temperature',
@@ -85,7 +85,9 @@ def utility ():
              '--mask-val', 
              '--verbose',
              '--temp-dir',
-             '--sort-method'
+             '--sort-method',
+             '--temp-data',
+             '--start-at'
             ]
         
         )
@@ -99,7 +101,7 @@ def utility ():
     elif arguments['--verbose'] == 'warn':
         verbosity = 1
     else:
-        verbosity = 0
+        verbosity = 2
 
     sort_method = "Using default sort function"
     sort_fn = sorted
@@ -115,7 +117,7 @@ def utility ():
         return
     
 
-
+    os.chdir(os.path.split(arguments['--temp-data'])[0])
     if verbosity >= 2:
        
         print('Seting up input...')
@@ -137,56 +139,82 @@ def utility ():
 
     years = [start_year + yr for yr in range(num_years)]
 
+    start_at = int(arguments['--start-at']) \
+        if arguments['--start-at'] else 0 
 
     temporal_grid_keys = [] 
     for yr in years: 
         for mn in months: 
             temporal_grid_keys.append(str(yr) + '-' + str(mn)) 
 
-    load_params = {
-            "method": "tiff",
-            "directory": arguments['--in-temperature'],
-            "sort_func": sort_fn,
-            "verbose": True if verbosity >= 2 else False
-        }
-    create_params = {
-        "name": "monthly temperatures",
-        # "start_timestep": int(arguments['--start-year']),
-        "grid_names": temporal_grid_keys
+    # load_params = {
+    #         "method": "tiff",
+    #         "directory": arguments['--in-temperature'],
+    #         "sort_func": sort_fn,
+    #         "verbose": True if verbosity >= 2 else False,
+    #         "filename": arguments['--temp-data']
+    #     }
+    # create_params = {
+    #     "name": "monthly temperatures",
+    #     # "start_timestep": int(arguments['--start-year']),
+    #     "grid_names": temporal_grid_keys,
+    #     "filename": arguments['--temp-data']
         
-    }
-    monthly_temps = load_and_create(load_params, create_params)
+    # }
+    # monthly_temps = load_and_create(load_params, create_params)
+    # print('DATA LOADED')
     
+    # ex_raster = glob.glob(
+    #         os.path.join(arguments['--in-temperature'],'*.tif')
+    #     )[0]
+    # raster_metadata = get_raster_metadata(ex_raster)
+    # monthly_temps.config['raster_metadata'] = raster_metadata
+
+#     mask_val = -3.39999999999999996e+38
+# #    if arguments['--mask-val'] is None:
+# #        mask_val = int(arguments['--mask-val'])
+
+
+#     idx = monthly_temps.grids < -1000
+#     monthly_temps.grids[idx] = np.nan
+    
+    # array = np.memmap(
+    #     'temp_data.data', dtype='float32', mode='r', 
+    #     shape=(1380, 1861, 2560) 
+    # )
+    monthly_temps = TemporalGrid('montly_airtemps.yml')
     ex_raster = glob.glob(
             os.path.join(arguments['--in-temperature'],'*.tif')
         )[0]
     raster_metadata = get_raster_metadata(ex_raster)
     monthly_temps.config['raster_metadata'] = raster_metadata
 
-    mask_val = -3.39999999999999996e+38
-#    if arguments['--mask-val'] is None:
-#        mask_val = int(arguments['--mask-val'])
-
-
-    idx = monthly_temps.grids < -1000
-    monthly_temps.grids[idx] = np.nan
 
 
 
     grid_shape = monthly_temps.config['grid_shape']
     # out_shape = (num_years, grid_shape[0], grid_shape[1])
-    fdd = TemporalGrid(
-        grid_shape[0], grid_shape[1], num_years, 
-        start_timestep=start_year,
-        dataset_name = 'fdd',
-        mode='w+'
-    )
-    tdd = TemporalGrid(
-        grid_shape[0], grid_shape[1], num_years, 
-        start_timestep=start_year,
-        dataset_name = 'tdd',
-        mode='w+'
-    )
+
+    if start_at == 0:
+        fdd = TemporalGrid(
+            grid_shape[0], grid_shape[1], num_years, 
+            start_timestep=start_year,
+            filename = 'temp_fdd.data',
+            dataset_name = 'fdd',
+            mode='w+'
+        )
+        fdd.save('temp_fdd.yml')
+        tdd = TemporalGrid(
+            grid_shape[0], grid_shape[1], num_years, 
+            start_timestep=start_year,
+            filename = 'temp_tdd.data',
+            dataset_name = 'tdd',
+            mode='w+'
+        )
+        tdd.save('temp_tdd.yml')
+    else: ## continue
+        fdd = TemporalGrid('temp_fdd.yml')
+        tdd = TemporalGrid('temp_tdd.yml')
 
     
     days = create_day_array( 
@@ -196,7 +224,7 @@ def utility ():
 
     manager = Manager()
 
-
+    print('SETUP COMPLETE')
 
     log = manager.dict() 
    
@@ -214,6 +242,7 @@ def utility ():
             grid_shape, 
             num_process = num_processes,
             log=log,
+            start=start_at
         )
 
 
@@ -235,6 +264,7 @@ def utility ():
     tdd.config['raster_metadata'] = raster_metadata
     tdd.config['dataset_name'] = 'thawing degree-day'
     tdd.save_all_as_geotiff(arguments['--out-tdd'])
+
 
 
 ## fix this

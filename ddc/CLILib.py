@@ -79,9 +79,9 @@ class CLI (object):
         # print(set(mandatory))
         # print(set(self.args.keys()))
         # print(set(self.flags))
-        if not set(mandatory) <= set(self.args.keys()) or \
-            not set(self.args.keys()) <= set(self.flags):
-            raise CLILibMandatoryError("Invalid mandatory flags")
+        # if not set(mandatory) <= set(self.args.keys()) or \
+        #     not set(self.args.keys()) <= set(self.flags):
+        #     raise CLILibMandatoryError("Invalid mandatory flags")
             
         
         if len(types) != 0:
