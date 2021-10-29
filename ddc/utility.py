@@ -80,6 +80,7 @@ def utility ():
             '--out-tdd',
             '--start-year'
             
+            
             ],
             ['--num-processes', 
              '--mask-val', 
@@ -104,10 +105,11 @@ def utility ():
     sort_method = "Using default sort function"
     sort_fn = sorted
 
-    if  arguments['--sort-method'].lower() == 'snap':
+    if   not arguments['--sort-method'] is None and \
+        arguments['--sort-method'].lower() == 'snap':
         sort_method = "Using SNAP sort function"
         sort_fn = sort_snap_files
-    elif not arguments['--sort-method']is None and\
+    elif not arguments['--sort-method'] is None and\
         arguments['--sort-method'].lower() != "default":
         print("invalid --sort-method option")
         print("run utility.py --help to see valid options")
@@ -188,6 +190,14 @@ def utility ():
         mode='w+'
     )
 
+    roots = TemporalGrid(
+        grid_shape[0], grid_shape[1], num_years*2, 
+        # start_timestep=start_year,
+        dataset_name = 'tdd',
+        mode='w+'
+    )
+
+
     
     days = create_day_array( 
         [datetime.strptime(d, '%Y-%m') for d in temporal_grid_keys] 
@@ -205,6 +215,7 @@ def utility ():
     )
     log['verbose'] = verbosity
 
+
 #     print(monthly_temps.grids.shape, fdd.grids.shape)
     calc_grid_degree_days(
             days, 
@@ -214,6 +225,8 @@ def utility ():
             grid_shape, 
             num_process = num_processes,
             log=log,
+            roots_grid=roots.grids,
+            logging_dir = './logs'
         )
 
 
@@ -227,6 +240,16 @@ def utility ():
         msg += ' at row:' + str(row) + ', col:' + str(col) + '.'
         print(msg)
 
+
+    try: 
+        os.makedirs(arguments['--out-fdd'])
+    except:
+        pass
+    try: 
+        os.makedirs(arguments['--out-tdd'])
+    except:
+        pass
+
     
     fdd.config['raster_metadata'] = raster_metadata
     fdd.config['dataset_name'] = 'freezing degree-day'
@@ -236,6 +259,10 @@ def utility ():
     tdd.config['dataset_name'] = 'thawing degree-day'
     tdd.save_all_as_geotiff(arguments['--out-tdd'])
 
+    roots.config['raster_metadata'] = raster_metadata
+    roots.config['dataset_name'] = 'roots'
+    # tdd.save_all_as_geotiff(arguments['--out-roots'])
+    roots.save('./out_roots.yml')
 
 ## fix this
 
