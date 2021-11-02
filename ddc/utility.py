@@ -49,6 +49,13 @@ def utility ():
         snap uses a function that sorts the files named via snaps month/
         year naming  convention (...01_1901.tif, ...01_1902.tif, ..., 
         ...12_2005.tif, ...12_2006.tif) to year/month order.
+    --logging-dir
+        Optional directory to keep "logging files"
+    --out-roots
+        Optional directory to save roots files
+    --out-format:
+        output format 'tiff' or 'multigrid'
+
     
     Examples
     --------
@@ -86,7 +93,10 @@ def utility ():
              '--mask-val', 
              '--verbose',
              '--temp-dir',
-             '--sort-method'
+             '--sort-method',
+             '--logging-dir',
+             '--out-roots',
+             '--out-format'
             ]
         
         )
@@ -101,7 +111,8 @@ def utility ():
         verbosity = 1
     else:
         verbosity = 0
-
+    # print(verbosity)
+    # return
     sort_method = "Using default sort function"
     sort_fn = sorted
 
@@ -116,6 +127,7 @@ def utility ():
         print("exiting")
         return
     
+  
 
 
     if verbosity >= 2:
@@ -215,7 +227,7 @@ def utility ():
     )
     log['verbose'] = verbosity
 
-
+    print('starting')
 #     print(monthly_temps.grids.shape, fdd.grids.shape)
     calc_grid_degree_days(
             days, 
@@ -226,7 +238,7 @@ def utility ():
             num_process = num_processes,
             log=log,
             roots_grid=roots.grids,
-            logging_dir = './logs'
+            logging_dir = arguments['--logging-dir']
         )
 
 
@@ -250,19 +262,42 @@ def utility ():
     except:
         pass
 
+    if arguments['--out-roots']:
+        try: 
+            os.makedirs(arguments['--out-roots'])
+        except:
+            pass
     
     fdd.config['raster_metadata'] = raster_metadata
     fdd.config['dataset_name'] = 'freezing degree-day'
-    fdd.save_all_as_geotiff(arguments['--out-fdd'])
+
+    if arguments['--out-format'] is None or \
+            arguments['--out-format'] == 'tiff' :
+        fdd.save_all_as_geotiff(arguments['--out-fdd'])
+    elif arguments['--out-format'] == 'multigrid':
+        fdd.save(os.path.join(arguments['--out-fdd'], 'fdd.yml'))
+
 
     tdd.config['raster_metadata'] = raster_metadata
     tdd.config['dataset_name'] = 'thawing degree-day'
-    tdd.save_all_as_geotiff(arguments['--out-tdd'])
+    # tdd.save_all_as_geotiff(arguments['--out-tdd'
+    if arguments['--out-format'] is None or \
+            arguments['--out-format'] == 'tiff' :
+        tdd.save_all_as_geotiff(arguments['--out-tdd'])
+    elif arguments['--out-format'] == 'multigrid':
+        tdd.save(os.path.join(arguments['--out-tdd'], 'tdd.yml'))
 
-    roots.config['raster_metadata'] = raster_metadata
-    roots.config['dataset_name'] = 'roots'
-    # tdd.save_all_as_geotiff(arguments['--out-roots'])
-    roots.save('./out_roots.yml')
+
+    if arguments['--out-roots']:
+        roots.config['raster_metadata'] = raster_metadata
+        roots.config['dataset_name'] = 'roots'
+        # roots.save_all_as_geotiff(arguments['--out-roots'])
+        if arguments['--out-format'] is None or \
+            arguments['--out-format'] == 'tiff' :
+            roots.save_all_as_geotiff(arguments['--out-roots'])
+        elif arguments['--out-format'] == 'multigrid':
+            roots.save(os.path.join(arguments['--out-roots'], 'roots.yml'))
+        # roots.save('./out_roots.yml')
 
 ## fix this
 

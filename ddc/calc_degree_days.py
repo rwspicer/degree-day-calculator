@@ -199,6 +199,8 @@ def calc_grid_degree_days (
     log: dict
     roots_grid: np.array
         2d grid of # years by flattend grid size X2. where roots are stored
+    logging_dir: optional, path
+        path to save diagnostic file indcating where data was interpolated
     
 
     returns
@@ -217,6 +219,8 @@ def calc_grid_degree_days (
     else:
         indices = start
     
+    if num_process == 1:
+        num_process += 1 # need to have a better fix?
     for idx in indices: # flatted area grid index
         while len(active_children()) >= num_process:
             continue
@@ -224,6 +228,7 @@ def calc_grid_degree_days (
             'calculating degree days for element ' + str(idx) + \
             '. ~' + '%.2f' % ((idx/len(indices)) * 100) + '% complete.'
         )
+        # print(idx)
         if log['verbose'] >= 2:
             print(log['Element Messages'][-1])
 
