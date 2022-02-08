@@ -2,7 +2,7 @@
 Calc Degree Days
 ----------------
 
-Tools for caclualting and storing spatial degree days values from temperature
+Tools for calculating and storing spatial degree days values from temperature
 """
 import numpy as np
 from scipy import interpolate
@@ -15,6 +15,8 @@ import matplotlib.pyplot as plt
 ROW, COL = 0, 1
 
 # from stack_rasters import load_and_stack
+import warnings
+warnings.filterwarnings("ignore")
 
 try:
     from multigrids import temporal_grid
@@ -58,12 +60,15 @@ def calc_degree_days(
     # print (temp_array)
 #     print('processing element', idx)
     spline = interpolate.UnivariateSpline(day_array, temp_array)
+    # print(spline)
+    # print (not expected_roots is None and len(spline.roots()) != expected_roots, len(spline.roots()), expected_roots )
     if not expected_roots is None and len(spline.roots()) != expected_roots:
         # print('reprocessing element', idx)
         # print (len(spline.roots()))
         i = 1
-        while len(spline.roots()) != expected_roots:
+        while len(spline.roots()) != expected_roots:            
             spline.set_smoothing_factor(i)
+            # print (i, len(spline.roots()))
             i+= 1
             #print len(spline.roots())
             if i >50:
@@ -74,8 +79,8 @@ def calc_degree_days(
                     print(log['Spline Errors'][-1])
                 # print('expected root mismatch at element ' + str(idx))
                 # print ('--->expected roots is not the same as spline.roots()', 'er', expected_roots, 'sr', len(spline.roots()))
-                return list(np.zeros(expected_roots//2) - np.inf),list(np.zeros((expected_roots//2) - 1) - np.inf)
-
+                return list(np.zeros(expected_roots//2) - np.inf),list(np.zeros((expected_roots//2) - 1) - np.inf), list(np.zeros(expected_roots) - np.inf)
+    # print('?')
     tdd = []
     fdd = []
     roots = []
@@ -93,6 +98,7 @@ def calc_degree_days(
             
 
     if keep_roots:
+        # print(fdd)
         return tdd, fdd, roots
     return tdd, fdd #, spline
 
@@ -214,14 +220,12 @@ def calc_grid_degree_days (
     if num_process is None:
        num_process = cpu_count()
     
-    if type(start) is int:   
-        indices = range(start, temp_grid.shape[1])
-    else:
-        indices = start
+    indices = range(start, temp_grid.shape[1])
     
     if num_process == 1:
         num_process += 1 # need to have a better fix?
     for idx in indices: # flatted area grid index
+        
         while len(active_children()) >= num_process:
             continue
         log['Element Messages'].append(
@@ -232,21 +236,24 @@ def calc_grid_degree_days (
         if log['verbose'] >= 2:
             print(log['Element Messages'][-1])
 
-
         if (temp_grid[:,idx] == -9999).all() or \
                 (np.isnan(temp_grid[:,idx])).all():
-            w_lock.acquire()
+            # w_lock.acquire()
             tdd_grid[:,idx] = np.nan
             fdd_grid[:,idx] = np.nan
             if not roots_grid is None:
                 roots_grid[:,idx] = np.nan
-            w_lock.release()
+            # w_lock.release()
             log['Element Messages'].append(
                 'Skipping element for missing values at ' + str(idx)
             )
             if log['verbose'] >= 2:
                 print(log['Element Messages'][-1])
             continue
+
+        # fig, ax = plt.subplots()
+        # ax.plot(day_array[:25], temp_grid[:,idx][:25])
+        # fig.savefig('test.png')
         Process(target=calc_and_store,
             name = "calc degree day at elem " + str(idx),
             args=(
