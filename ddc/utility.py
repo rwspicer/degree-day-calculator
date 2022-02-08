@@ -79,7 +79,7 @@ def utility ():
 
     """
  
-   
+    
     try:
         arguments = CLILib.CLI([
             '--in-temperature',
@@ -98,6 +98,7 @@ def utility ():
                 '--logging-dir',
                 '--out-roots',
                 '--out-format',
+                '--temp-data',
                 '--start-at'
             ]
         
@@ -113,9 +114,7 @@ def utility ():
         verbosity = 1
     else:
         verbosity = 0
-    # print(verbosity)
-    # return
-    # verbosity =
+
     sort_method = "Using default sort function"
     sort_fn = sorted
 
@@ -129,10 +128,8 @@ def utility ():
         print("run utility.py --help to see valid options")
         print("exiting")
         return
-    
-  
 
-
+    os.chdir(os.path.split(arguments['--temp-data'])[0])
     if verbosity >= 2:
        
         print('Seting up input...')
@@ -146,8 +143,6 @@ def utility ():
         os.makedirs(arguments['--out-tdd'])
     except:
         pass
-
-
 
     if arguments['--out-roots']:
         try: 
@@ -165,13 +160,14 @@ def utility ():
     num_processes = int(arguments['--num-processes']) \
         if arguments['--num-processes']  else 1
     
+    ## in temps are a multigrid
     if os.path.isfile(arguments['--in-temperature']):
         print('in file', arguments['--in-temperature'])
         monthly_temps = TemporalGrid(arguments['--in-temperature'])
         print(monthly_temps)
         num_years = monthly_temps.config['num_timesteps'] // 12
         raster_metadata  = monthly_temps.config['raster_metadata'] 
-    else:
+    else: ## in temps are directory
         num_years = len(
             glob.glob(os.path.join(arguments['--in-temperature'],'*.tif')) 
         ) 
@@ -204,7 +200,7 @@ def utility ():
         raster_metadata = get_raster_metadata(ex_raster)
         monthly_temps.config['raster_metadata'] = raster_metadata
 
-        mask_val = -3.39999999999999996e+38
+        mask_val = -3.39999999999999996e+38 ## TODO fix mask val
     #    if arguments['--mask-val'] is None:
     #        mask_val = int(arguments['--mask-val'])
 
@@ -263,7 +259,7 @@ def utility ():
 
     manager = Manager()
 
-
+    print('SETUP COMPLETE')
 
     log = manager.dict() 
    
@@ -298,7 +294,6 @@ def utility ():
         msg += ' at row:' + str(row) + ', col:' + str(col) + '.'
         print(msg)
 
-
     try: 
         os.makedirs(arguments['--out-fdd'])
     except:
@@ -324,7 +319,6 @@ def utility ():
         fdd.config['command-used-to-create'] = ' '.join(sys.argv)
         fdd.save(os.path.join(arguments['--out-fdd'], 'fdd.yml'))
 
-
     tdd.config['raster_metadata'] = raster_metadata
     tdd.config['dataset_name'] = 'thawing degree-day'
     # tdd.save_all_as_geotiff(arguments['--out-tdd'
@@ -336,7 +330,6 @@ def utility ():
     elif arguments['--out-format'] == 'multigrid':
         tdd.config['command-used-to-create'] = ' '.join(sys.argv)
         tdd.save(os.path.join(arguments['--out-tdd'], 'tdd.yml'))
-
 
     if arguments['--out-roots']:
         roots.config['raster_metadata'] = raster_metadata
@@ -350,6 +343,7 @@ def utility ():
             roots.save(os.path.join(arguments['--out-roots'], 'roots.yml'))
 
         # roots.save('./out_roots.yml')
+
 
 ## fix this
 

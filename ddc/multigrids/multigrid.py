@@ -261,6 +261,7 @@ class MultiGrid (object):
         """
 
         config = {}
+        config['cfg_path'] = './'
         config['grid_shape']= (args[0], args[1])
         config['num_grids'] = args[2]
         config['memory_shape'] = self.get_memory_shape(config)

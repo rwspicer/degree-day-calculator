@@ -11,6 +11,8 @@ from copy import deepcopy
 import os
 from datetime import datetime
 import matplotlib.pyplot as plt
+import shutil
+import gc
 
 ROW, COL = 0, 1
 
@@ -143,20 +145,26 @@ def calc_and_store  (
 
 
     lock.acquire()
-    tdd_grid[:,index] = tdd
-    ## FDD array is not long enough (len(tdd) - 1) on its own, so we use the 
-    # first winter value twice this works because the the spline curves are
-    # created will always have a first root going from negative to positistve
-    # This works for northern alaska and should not be assumed else where.\
-    ##
+    try:
+        tdd_grid[:,index] = tdd
+        ## FDD array is not long enough (len(tdd) - 1) on its own, so we use the 
+        # first winter value twice this works because the the spline curves are
+        # created will always have a first root going from negative to positistve
+        # This works for northern alaska and should not be assumed else where.\
+        ##
 
-    ### see the notes
-    ##
-    fdd_grid[:,index] = fdd + [fdd[-1]] # I.E. if last year of data is 2015, the 
+    
+        fdd_grid[:,index] = fdd + [fdd[-1]] # I.E. if last year of data is 2015, the 
                                         # fdd for 2015 is set to fdd for 2014
 
-    if not roots_grid is None:
-        roots_grid[:,index] = roots
+        if not roots_grid is None:
+            roots_grid[:,index] = roots
+            ### see the notes
+            ##
+
+    except ValueError as e:
+        pass # not sure why this is here but it looks good
+        print ("NEW_ERROR at", index,":", str(e))
     lock.release()
 
 
@@ -228,6 +236,7 @@ def calc_grid_degree_days (
         
         while len(active_children()) >= num_process:
             continue
+        [gc.collect(i) for i in range(3)] # garbage collection
         log['Element Messages'].append(
             'calculating degree days for element ' + str(idx) + \
             '. ~' + '%.2f' % ((idx/len(indices)) * 100) + '% complete.'
@@ -247,8 +256,8 @@ def calc_grid_degree_days (
             log['Element Messages'].append(
                 'Skipping element for missing values at ' + str(idx)
             )
-            if log['verbose'] >= 2:
-                print(log['Element Messages'][-1])
+            # if log['verbose'] >= 2:
+            print(log['Element Messages'][-1])
             continue
 
         # fig, ax = plt.subplots()
@@ -271,6 +280,11 @@ def calc_grid_degree_days (
             
         continue
     
+
+    shutil.copyfile("temp_fdd.data", "temp_fdd_precleanup.data")
+    shutil.copyfile("temp_tdd.data", "temp_tdd_precleanup.data")
+
+
     ## fix missing cells
     m_rows, m_cols = np.where(tdd_grid[0].reshape(shape) == -np.inf)   
     #~ print  m_rows, m_cols
