@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0 [2022-02-08]
+### fixed 
+- bug fixes in ddc/CLIlib.py
+
+### added
+- options to save roots
+- loading/saving inputs and results to and from multigrids
+- option to restart processing at a given pixel
+
 ## 1.0.1 [2020-09-10]
 ### Fixed 
 - bug in sort snap caused by numbers in paths
