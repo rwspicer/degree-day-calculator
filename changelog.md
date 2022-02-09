@@ -1,6 +1,16 @@
 # Changelog
 
-## 1.1.0 [2022-02-08]
+## 1.1.1 [2022-02-08]
+### fixed
+- Bug with multiprocessing Manager()
+- Bug on macos caused by changes to multiprocessing in python 3.8+
+
+### changed
+- multigirds.tools creates memory mapped arrays
+- minor changes to handle large datasets
+- cleanup old commented out code
+
+## 1.1.0 [2022-02-08] 
 ### fixed 
 - bug fixes in ddc/CLIlib.py
 
