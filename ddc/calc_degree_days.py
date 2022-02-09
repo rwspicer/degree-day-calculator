@@ -6,7 +6,8 @@ Tools for calculating and storing spatial degree days values from temperature
 """
 import numpy as np
 from scipy import interpolate
-from multiprocessing import Process, Lock, active_children, cpu_count
+from multiprocessing import Process, Lock, active_children, cpu_count 
+from multiprocessing import set_start_method
 from copy import deepcopy
 import os
 from datetime import datetime
@@ -26,6 +27,12 @@ except ImportError:
     from .multigrids import temporal_grid
  
 TemporalGrid = temporal_grid.TemporalGrid
+
+
+# Some Mac OS nonsense for python>=3.8. Macos uses 'spanw' now instead of
+# 'fork' but that causes issues with passing np.memmap objcets. Anyway
+# this might be unstable on Mac OS now
+set_start_method('fork') 
 
 
 def calc_degree_days(
@@ -153,14 +160,13 @@ def calc_and_store  (
         # This works for northern alaska and should not be assumed else where.\
         ##
 
-    
+
         fdd_grid[:,index] = fdd + [fdd[-1]] # I.E. if last year of data is 2015, the 
                                         # fdd for 2015 is set to fdd for 2014
 
         if not roots_grid is None:
             roots_grid[:,index] = roots
-            ### see the notes
-            ##
+            
 
     except ValueError as e:
         pass # not sure why this is here but it looks good
@@ -263,6 +269,7 @@ def calc_grid_degree_days (
         # fig, ax = plt.subplots()
         # ax.plot(day_array[:25], temp_grid[:,idx][:25])
         # fig.savefig('test.png')
+        # print(1, type(tdd_grid), tdd_grid.filename)
         Process(target=calc_and_store,
             name = "calc degree day at elem " + str(idx),
             args=(
@@ -280,36 +287,23 @@ def calc_grid_degree_days (
             
         continue
     
-
-    shutil.copyfile("temp_fdd.data", "temp_fdd_precleanup.data")
-    shutil.copyfile("temp_tdd.data", "temp_tdd_precleanup.data")
-
-
     ## fix missing cells
     m_rows, m_cols = np.where(tdd_grid[0].reshape(shape) == -np.inf)   
     #~ print  m_rows, m_cols
     cells = []
 
-    try: 
-        os.makedirs(logging_dir)
-    except:
-        pass
-
     if logging_dir:
+        try: 
+            os.makedirs(logging_dir)
+        except:
+            pass
         log_grid = deepcopy(tdd_grid[0].reshape(shape))
         np.save(os.path.join(logging_dir, 'pre_cleanup_example.data'), log_grid)
         log_grid[log_grid>=0] = 1 
         log_grid[log_grid==-np.inf] = 0
         np.save(os.path.join(logging_dir, 'interpolated.data'), log_grid)
-    try: 
-        os.makedirs(logging_dir)
-    except:
-        pass
-    
-    # plt.imsave(os.path.join(logging_dir, 'interpolated.png'), log_grid)
-    
-
-
+        shutil.copyfile(fdd_grid.filename, "temp_fdd_precleanup.data")
+        shutil.copyfile(tdd_grid.filename, "temp_tdd_precleanup.data")
 
     for cell in range(len(m_rows)):
         f_index = m_rows[cell] * shape[1] + m_cols[cell]  # 'flat' index of
@@ -353,8 +347,6 @@ def calc_grid_degree_days (
         cells.append(f_index)
             
     return cells
-        
-    
         
         
 def create_day_array (dates):
