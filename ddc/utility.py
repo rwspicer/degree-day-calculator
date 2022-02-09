@@ -53,7 +53,9 @@ def utility ():
         Optional directory to save roots files
     --out-format:
         output format 'tiff' or 'multigrid'
-    
+    --start-at: int
+        index to star-at on resuming processing
+
     Examples
     --------
     Calculate freezing and thawing degree-days from monthly temperature and save 
@@ -70,16 +72,12 @@ def utility ():
         --out-fdd=./fdd --out-tdd=./tdd --start-year=2006 --mask-val=-9999 
         --num-processes=6 --verbose=log --sort-method=snap
     """
- 
-   
     try:
         arguments = CLILib.CLI([
             '--in-temperature',
             '--out-fdd',
             '--out-tdd',
             '--start-year'
-            
-            
             ],
             [
                 '--num-processes', 
@@ -105,9 +103,7 @@ def utility ():
         verbosity = 1
     else:
         verbosity = 0
-    # print(verbosity)
-    # return
-    # verbosity =
+
     sort_method = "Using default sort function"
     sort_fn = sorted
 
@@ -121,12 +117,7 @@ def utility ():
         print("run utility.py --help to see valid options")
         print("exiting")
         return
-    
-  
-
-
     if verbosity >= 2:
-       
         print('Seting up input...')
         print('\t', sort_method)
     
@@ -138,21 +129,13 @@ def utility ():
         os.makedirs(arguments['--out-tdd'])
     except:
         pass
-
-
-
     if arguments['--out-roots']:
         try: 
             os.makedirs(arguments['--out-roots'])
         except:
             pass
     
-
     start_year = int(arguments['--start-year'])
-    # months = [
-    #     '01','02','03','04','05','06',
-    #     '07','08','09','10','11','12',
-    # ]
 
     num_processes = int(arguments['--num-processes']) \
         if arguments['--num-processes']  else 1
@@ -197,7 +180,7 @@ def utility ():
         raster_metadata = get_raster_metadata(ex_raster)
         monthly_temps.config['raster_metadata'] = raster_metadata
 
-        mask_val = -3.39999999999999996e+38
+        mask_val = -3.39999999999999996e+38 # TODO fix mask value feature
     #    if arguments['--mask-val'] is None:
     #        mask_val = int(arguments['--mask-val'])
 
@@ -237,13 +220,10 @@ def utility ():
 
     roots = TemporalGrid(
         grid_shape[0], grid_shape[1], num_years*2, 
-        # start_timestep=start_year,
         dataset_name = 'tdd',
         mode='w+'
     )
 
-
-    
     days = create_day_array( 
         [ datetime.strptime(d, '%Y-%m') for d in list(
             monthly_temps.config['grid_name_map'].keys()
@@ -252,22 +232,14 @@ def utility ():
     )
     shape = monthly_temps.config['memory_shape']
 
-    
-
     manager = Manager()  
-
-
     log = manager.dict() 
-   
     log.update(
         {'Element Messages': manager.list() , 'Spline Errors': manager.list()}
     )
     log['verbose'] = verbosity
 
     print('starting')
-#     print(monthly_temps.grids.shape, fdd.grids.shape)
-    print(arguments['--start-at'])
-    print(type(tdd.grids), tdd.grids.filename)
     calc_grid_degree_days(
             days, 
             monthly_temps.grids, 
@@ -281,7 +253,6 @@ def utility ():
             logging_dir = arguments['--logging-dir']
         )
 
-
     for item in log["Spline Errors"]:
         words = item.split(' ')
         location = int(words[-1])
@@ -292,7 +263,6 @@ def utility ():
         msg += ' at row:' + str(row) + ', col:' + str(col) + '.'
         print(msg)
 
-
     try: 
         os.makedirs(arguments['--out-fdd'])
     except:
@@ -301,7 +271,6 @@ def utility ():
         os.makedirs(arguments['--out-tdd'])
     except:
         pass
-
     if arguments['--out-roots']:
         try: 
             os.makedirs(arguments['--out-roots'])
@@ -318,7 +287,6 @@ def utility ():
         fdd.config['command-used-to-create'] = ' '.join(sys.argv)
         fdd.save(os.path.join(arguments['--out-fdd'], 'fdd.yml'))
 
-
     tdd.config['raster_metadata'] = raster_metadata
     tdd.config['dataset_name'] = 'thawing degree-day'
     # tdd.save_all_as_geotiff(arguments['--out-tdd'
@@ -326,11 +294,9 @@ def utility ():
             arguments['--out-format'] == 'tiff' :
         tdd.save_all_as_geotiff(arguments['--out-tdd'])
         
-
     elif arguments['--out-format'] == 'multigrid':
         tdd.config['command-used-to-create'] = ' '.join(sys.argv)
         tdd.save(os.path.join(arguments['--out-tdd'], 'tdd.yml'))
-
 
     if arguments['--out-roots']:
         roots.config['raster_metadata'] = raster_metadata
