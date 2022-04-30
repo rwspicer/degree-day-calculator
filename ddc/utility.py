@@ -12,7 +12,7 @@ import numpy as np
 from calc_degree_days import calc_grid_degree_days, create_day_array
 from multigrids.tools import load_and_create, get_raster_metadata
 from multigrids import TemporalGrid
-import CLILib
+from spicebox import CLILib
 
 from multiprocessing import Manager, Lock
 
@@ -73,50 +73,63 @@ def utility ():
         --num-processes=6 --verbose=log --sort-method=snap
     """
     try:
-        arguments = CLILib.CLI([
-            '--in-temperature',
-            '--out-fdd',
-            '--out-tdd',
-            '--start-year'
-            ],
-            [
-                '--num-processes', 
-                '--mask-val', 
-                '--verbose',
-                '--temp-dir',
-                '--sort-method',
-                '--logging-dir',
-                '--out-roots',
-                '--out-format',
-                '--start-at'
-            ]
-        
-        )
+        flags = {
+            '--in-temperature': 
+                {'required': True, 'type': str}, 
+            '--out-fdd': 
+                {'required': True, 'type': str},
+            "--out-fdd": 
+                {'required': True, 'type': str},
+            "--start-year": 
+                {'required': True, 'type': int}, 
+
+            "--num-processes": 
+                {'required': False, 'default': 1, 'type': int },
+            '--mask-val':  ## still broken
+                {'required': False, 'type': int, 'default': -9999},
+            '--verbose': 
+                {
+                    'required': False, 'type': str, 'default': '', 
+                    'accepted-values': ['', 'log', 'warn']
+                },
+            '--sort-method': 
+                {
+                    'required': False, 'type': str, 'default':'default',
+                    'accepted-values': ['default', 'snap']
+                },
+            '--logging-dir': 
+                {'required': False, 'type': str },
+            '--out-roots': 
+                {'required': False, 'type': str },
+            '--out-format': 
+                {
+                    'required': False, 'default': 'tiff', 'type': str, 
+                    'accepted-values':['tiff','multigrid']
+                },
+            '--start-at': 
+                {'required': False, 'type': int, 'default': 0 },
+        }
+
+        arguments = CLILib.CLI(flags)
     except (CLILib.CLILibHelpRequestedError, CLILib.CLILibMandatoryError) as E:
         print (E)
         print(utility.__doc__)
         return
 
-    if  arguments['--verbose'] == 'log':
-        verbosity = 2
-    elif arguments['--verbose'] == 'warn':
-        verbosity = 1
-    else:
-        verbosity = 0
-
+    verbosity = {'log':2, 'warn':1, '':0}[arguments['--verbose']]
+    
     sort_method = "Using default sort function"
     sort_fn = sorted
 
-    if   not arguments['--sort-method'] is None and \
-        arguments['--sort-method'].lower() == 'snap':
+    if  arguments['--sort-method'].lower() == 'snap':
         sort_method = "Using SNAP sort function"
         sort_fn = sort_snap_files
-    elif not arguments['--sort-method'] is None and\
-        arguments['--sort-method'].lower() != "default":
+    elif arguments['--sort-method'].lower() != "default":
         print("invalid --sort-method option")
         print("run utility.py --help to see valid options")
         print("exiting")
         return
+
     if verbosity >= 2:
         print('Seting up input...')
         print('\t', sort_method)
