@@ -158,12 +158,12 @@ def utility ():
         for yr in years: 
             for mn in range(1,13):
                 temporal_grid_keys.append('%d-%02d' % (yr,mn) ) 
-
+        print(glob.glob(arguments['--in-temperature']))
         load_params = {
                 "method": "tiff",
                 "directory": arguments['--in-temperature'],
                 "sort_func": sort_fn,
-                "verbose": True if verbosity >= 2 else False,
+                "verbose": True,# if verbosity >= 2 else False,
                 "filename": 'temp-in-temperature.data',
             }
         create_params = {
@@ -188,6 +188,7 @@ def utility ():
         monthly_temps.grids[idx] = np.nan
         monthly_temps.config['num_timesteps'] = \
             monthly_temps.config['num_grids']
+        monthly_temps.save('temp-temp-data.yml')
 
     grid_shape = monthly_temps.config['grid_shape']
     if  os.path.isfile(os.path.join(arguments['--out-fdd'], 'fdd.yml')):
@@ -218,11 +219,16 @@ def utility ():
         tdd.save(os.path.join(arguments['--out-tdd'], 'tdd.yml'))
         tdd = TemporalGrid(os.path.join(arguments['--out-tdd'], 'tdd.yml'))
 
-    roots = TemporalGrid(
-        grid_shape[0], grid_shape[1], num_years*2, 
-        dataset_name = 'tdd',
-        mode='w+'
-    )
+    if os.path.isfile(os.path.join(arguments['--out-roots'], 'roots.yml')):
+        roots = TemporalGrid(os.path.join(arguments['--out-roots'], 'roots.yml'))
+    else:
+        roots = TemporalGrid(
+            grid_shape[0], grid_shape[1], num_years*2, 
+            dataset_name = 'roots',
+            mode='w+'
+        )
+        if arguments['--out-roots']:
+            roots.save(os.path.join(arguments['--out-roots'], 'roots.yml'))
 
     days = create_day_array( 
         [ datetime.strptime(d, '%Y-%m') for d in list(

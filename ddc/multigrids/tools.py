@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 import glob
 
 try: 
-    import gdal
+    from osgeo import gdal
 except ImportError:
     gdal = None
 

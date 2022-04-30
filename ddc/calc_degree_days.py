@@ -5,6 +5,7 @@ Calc Degree Days
 Tools for calculating and storing spatial degree days values from temperature
 """
 import os
+from re import I
 import shutil
 import gc
 import warnings
@@ -133,6 +134,7 @@ def calc_and_store  (
         )
 
     lock.acquire()
+    # print(tdd, fdd, roots)
     try:
         tdd_grid[:,index] = tdd
         ## FDD array is not long enough (len(tdd) - 1) on its own, so we use the 
@@ -210,7 +212,20 @@ def calc_grid_degree_days (
     if num_process is None:
        num_process = cpu_count()
     
-    indices = range(start, temp_grid.shape[1])
+    # indices = range(start, temp_grid.shape[1])
+    print(
+        'calculating valid indices!'
+    )
+    indices = np.where(~np.isnan(temp_grid[0]))[0]
+    
+
+    indices = indices[indices > start]
+    # print(indices)
+    # import sys
+    # sys.exit()
+
+    n_cells = temp_grid.shape[1]
+
     
     if num_process == 1:
         num_process += 1 # need to have a better fix?
@@ -221,7 +236,7 @@ def calc_grid_degree_days (
         [gc.collect(i) for i in range(3)] # garbage collection
         log['Element Messages'].append(
             'calculating degree days for element ' + str(idx) + \
-            '. ~' + '%.2f' % ((idx/len(indices)) * 100) + '% complete.'
+            '. ~' + '%.2f' % ((idx/n_cells) * 100) + '% complete.'
         )
         if log['verbose'] >= 2:
             print(log['Element Messages'][-1])
@@ -305,7 +320,7 @@ def calc_grid_degree_days (
         ## assign days
         tdd_grid[:,f_index] = tdd_mean
         fdd_grid[:,f_index] = fdd_mean
-        roots_grid[:,f_index] = roots_means
+        roots_grid[:,f_index] = roots_mean
         cells.append(f_index)
             
     return cells
