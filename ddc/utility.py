@@ -37,6 +37,9 @@ def create_or_load_dataset(
         grids.config['dataset_name'] = name
         grids.save(data_path)
         grids = TemporalGrid(data_path)
+        for ts in grids.timestep_range():
+            # print(ts)
+            grids[ts] = np.nan
     return grids
 
 def utility ():
@@ -48,34 +51,52 @@ def utility ():
         path to directory containing monthly air temperature files. When sorted 
         (by python sorted function) these files should be in chronological 
         order.
-    --out-fdd: path
-        path to save freezing degree-day tiff files at
-    --out-tdd: path
-        path to save thawing degree-day tiff files at
     --start-year: int
-        the start year for the data
+        the start year of data being processed
+    --out-directory: path
+        if this flag is used a unified output directory will be created with 
+        sub-directories for: fdd, tdd, roots, and logs. Other out- flags are 
+        ignored. Either --out-directory or --out-tdd and --out-fdd, 
+        are required.
+    --out-fdd: path 
+        path to save freezing degree-day tiff files at. Ignored if  
+        --out-directory is used. Either --out-directory or --out-tdd and 
+        --out-fdd, are required.
+    --out-tdd: path
+        path to save thawing degree-day tiff files at. Ignored if  
+        --out-directory is used. Either --out-directory or --out-tdd and 
+        --out-fdd, are required.
+    --logging-dir: path
+        Optional directory to keep "logging files". Ignored if  --out-directory 
+        is used
+    --out-roots: path
+        Optional directory to save roots files. Ignored if  --out-directory is 
+        used
+    --out-format: 'tiff', 'multigrid', or 'both'
+        Optional, default tiff. output format 
     --num-processes: int
-        Number of processes to use when calculating degree-days. Defaults 
-        to one.
-    --mask-val: int
-        No data value in input tiff data. Defaults to -9999.
-    --verbosity: string
-        "log", "warn" for logging all messages, or only warn messages. If
-        not used no messages are printed.
-    --sort-method
-        "default" or "snap" to specify the method for sorting method used
+        Optional, Default 1. Number of processes to use when calculating 
+        degree-days. 
+    --mask-val: int 
+        Optional, Default None. Nodata value in input tiff data.    
+    --mask-comp: 'eq','ne', 'lt', 'gt', 'lte', 'gte'
+        Optional, Default 'eq'. Comparsion for masking bad data 
+        'eq' uses '==' ,'ne' uses '!=', 'lt' uses '<', 'gt'  uses '>', 
+        'lte' uses '<=', 'gte' uses '>='
+    --verbosity: "log", "warn", or not provided
+        Optional, Defaults to not provided. 'log' for logging all messages, or 
+        'warn' for only warn messages. If not provided most messages are not
+        printed.
+    --sort-method: "default" or "snap" 
+        Optional, Default "default". The method for sorting method used
         for loading tiff files, default uses pythons `sorted` function, 
         snap uses a function that sorts the files named via snaps month/
         year naming  convention (...01_1901.tif, ...01_1902.tif, ..., 
         ...12_2005.tif, ...12_2006.tif) to year/month order.
-    --logging-dir
-        Optional directory to keep "logging files"
-    --out-roots
-        Optional directory to save roots files
-    --out-format:
-        output format 'tiff' or 'multigrid'
     --start-at: int
-        index to star-at on resuming processing
+        Optional, Default 0. index to star-at on resuming processing
+    --save-temp-monthly: bool
+        Optional, Default False. If True save temporary monthly data state
 
     Examples
     --------
@@ -113,7 +134,12 @@ def utility ():
             "--num-processes": 
                 {'required': False, 'default': 1, 'type': int },
             '--mask-val':  ## still broken
-                {'required': False, 'type': int, 'default': -9999},
+                {'required': False, 'type': int},
+            '--mask-comp':
+                {
+                    'required': False, 'default': 'eq', 'type': str, 
+                    'accepted-values':['eq','ne', 'lt', 'gt', 'lte', 'gte']
+                },
             '--verbose': 
                 {
                     'required': False, 'type': str, 'default': '', 
@@ -124,7 +150,6 @@ def utility ():
                     'required': False, 'type': str, 'default':'default',
                     'accepted-values': ['default', 'snap']
                 },
-
             '--logging-dir': 
                 {'required': False, 'type': str },
             '--out-roots': 
@@ -136,6 +161,9 @@ def utility ():
                 },
             '--start-at': 
                 {'required': False, 'type': int, 'default': 0 },
+            '--save-temp-monthly':
+                {'required': False, 'type': bool, 'default': False },
+            
         }
 
         arguments = CLILib.CLI(flags)
@@ -213,7 +241,7 @@ def utility ():
         for yr in years: 
             for mn in range(1,13):
                 temporal_grid_keys.append('%d-%02d' % (yr,mn) ) 
-
+        # print(glob.glob(arguments['--in-temperature']))
         load_params = {
                 "method": "tiff",
                 "directory": arguments['--in-temperature'],
@@ -223,12 +251,9 @@ def utility ():
             }
         create_params = {
             "name": "monthly temperatures",
-            # "start_timestep": int(arguments['--start-year']),
             "grid_names": temporal_grid_keys
             
         }
-        # print(load_params)
-        # print(create_params)
 
         monthly_temps = load_and_create(load_params, create_params)
         
@@ -238,20 +263,29 @@ def utility ():
         raster_metadata = get_raster_metadata(ex_raster)
         monthly_temps.config['raster_metadata'] = raster_metadata
 
-        mask_val = -3.39999999999999996e+38 # TODO fix mask value feature
-    #    if arguments['--mask-val'] is None:
-    #        mask_val = int(arguments['--mask-val'])
-
-        idx = monthly_temps.grids < -1000
-        monthly_temps.grids[idx] = np.nan
+        if not arguments['--mask-val'] is None:
+            mask = arguments['--mask-val']
+            if arguments['--mask-comp']   == 'eq':
+                no_data_idx =     monthly_temps.grids == mask
+            elif arguments['--mask-comp'] == 'ne':
+                no_data_idx =     monthly_temps.grids != mask
+            elif arguments['--mask-comp'] == 'lt':
+                no_data_idx =     monthly_temps.grids < mask
+            elif arguments['--mask-comp'] == 'gt':
+                no_data_idx =     monthly_temps.grids > mask
+            elif arguments['--mask-comp'] == 'lte':
+                no_data_idx =     monthly_temps.grids <= mask
+            elif arguments['--mask-comp'] == 'gte':
+                no_data_idx =     monthly_temps.grids >= mask            
+            monthly_temps.grids[no_data_idx] = np.nan
+            
         monthly_temps.config['num_timesteps'] = \
             monthly_temps.config['num_grids']
+        
+        monthly_temps.save('temp-monthly-temperature-data.yml')
 
+    
     grid_shape = monthly_temps.config['grid_shape']
-
-
-
-    # data_path, grid_shape, num_years, start_year, name, raster_metadata
 
     fdd = create_or_load_dataset(
         os.path.join(out_fdd, 'fdd.yml'), 
@@ -275,10 +309,11 @@ def utility ():
         os.path.join(out_roots, 'roots.yml'), 
         grid_shape, 
         num_years * 2, 
-        1901, 
+        0, 
         'spline-roots', 
         raster_metadata
     )
+    roots.config['delta_timestep'] = "varies"
 
     days = create_day_array( 
         [ datetime.strptime(d, '%Y-%m') for d in list(
@@ -286,7 +321,6 @@ def utility ():
             )
         ] 
     )
-    shape = monthly_temps.config['memory_shape']
 
     manager = Manager()  
     log = manager.dict() 
@@ -360,31 +394,14 @@ def utility ():
         fdd.config['command-used-to-create'] = ' '.join(sys.argv)
         tdd.config['command-used-to-create'] = ' '.join(sys.argv)
         roots.config['command-used-to-create'] = ' '.join(sys.argv)
-        # tdd.save_all_as_geotiff(arguments['--out-tdd'])
-        # fdd.save_all_as_geotiff(arguments['--out-fdd'])
-        # if arguments['--out-roots']:
-        #     roots.save_all_as_geotiff(arguments['--out-roots'])
+        # print(os.path.join(out_fdd, 'fdd.yml'))
+        fdd.save(os.path.join(out_fdd, 'fdd.yml'))
+        tdd.save(os.path.join(out_tdd, 'tdd.yml'))
+        roots.save(os.path.join(out_roots, 'roots.yml'))
 
-    # if arguments['--out-format'] is None or \
-    #         arguments['--out-format'] == 'tiff' :
-    #     tdd.save_all_as_geotiff(arguments['--out-tdd'])
-        
-    # elif arguments['--out-format'] == 'multigrid':
-    #     tdd.config['command-used-to-create'] = ' '.join(sys.argv)
-    #     tdd.save(os.path.join(arguments['--out-tdd'], 'tdd.yml'))
-
-    # if arguments['--out-roots']:
-    #     roots.config['raster_metadata'] = raster_metadata
-    #     roots.config['dataset_name'] = 'roots'
-    #     # roots.save_all_as_geotiff(arguments['--out-roots'])
-    #     if arguments['--out-format'] is None or \
-    #         arguments['--out-format'] == 'tiff' :
-    #         roots.save_all_as_geotiff(arguments['--out-roots'])
-    #     elif arguments['--out-format'] == 'multigrid':
-    #         roots.config['command-used-to-create'] = ' '.join(sys.argv)
-    #         roots.save(os.path.join(arguments['--out-roots'], 'roots.yml'))
-
-        # roots.save('./out_roots.yml')
+    if not arguments['--save-temp-monthly']:
+        for file in glob.glob('temp-monthly-temperature-data.*'):
+            os.remove(file)
 
 ## fix this
 

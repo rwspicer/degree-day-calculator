@@ -5,6 +5,7 @@ Calc Degree Days
 Tools for calculating and storing spatial degree days values from temperature
 """
 import os
+from re import I
 import shutil
 import gc
 import warnings
@@ -26,7 +27,7 @@ ROW, COL = 0, 1
 
 warnings.filterwarnings("ignore")
 
-# Some Mac OS nonsense for python>=3.8. Macos uses 'spanw' now instead of
+# Some Mac OS nonsense for python>=3.8. Macos uses 'spawn' now instead of
 # 'fork' but that causes issues with passing np.memmap objcets. Anyway
 # this might be unstable on Mac OS now
 set_start_method('fork') 
@@ -133,6 +134,7 @@ def calc_and_store  (
         )
 
     lock.acquire()
+    # print(tdd, fdd, roots)
     try:
         tdd_grid[:,index] = tdd
         ## FDD array is not long enough (len(tdd) - 1) on its own, so we use the 
@@ -207,22 +209,15 @@ def calc_grid_degree_days (
     """
     w_lock = Lock()
     
-    if num_process is None:
-       num_process = cpu_count()
-    
-    # indices = range(start, temp_grid.shape[1])
-    
     if num_process == 1:
         num_process += 1 # need to have a better fix?
+    elif num_process is None:
+       num_process = cpu_count()
+
+    print('Calculating valid indices!')
 
     indices = range(start, temp_grid.shape[1])
-    # indices = range(start, temp_grid.shape[1])
-    print(
-        'calculating valid indices!'
-    )
     indices = np.where(~np.isnan(temp_grid[0]))[0]
-
-
     indices = indices[indices > start]
 
     n_cells = temp_grid.shape[1]
@@ -324,7 +319,7 @@ def calc_grid_degree_days (
         ## assign days
         tdd_grid[:,f_index] = tdd_mean
         fdd_grid[:,f_index] = fdd_mean
-        roots_grid[:,f_index] = roots_means
+        roots_grid[:,f_index] = roots_mean
         cells.append(f_index)
             
     return cells
