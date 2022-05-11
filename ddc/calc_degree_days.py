@@ -36,7 +36,7 @@ set_start_method('fork')
 def calc_degree_days(
             day_array, temp_array, expected_roots = None,
             log={'Spline Errors': [], 'verbose':0}, idx="Unknown",
-            keep_roots = False
+            keep_roots = False, max_smoothing=50
         ):
     """Calc degree days (thawing, and freezing)
     
@@ -63,20 +63,51 @@ def calc_degree_days(
     """
     spline = interpolate.UnivariateSpline(day_array, temp_array)
     if not expected_roots is None and len(spline.roots()) != expected_roots:
-        i = 1
-        while len(spline.roots()) != expected_roots:            
+        
+
+        spline.set_smoothing_factor(max_smoothing) ## try max
+        if len(spline.roots()) != expected_roots:
+            log['Spline Errors'].append(
+                'expected root mismatch at element ' + str(idx)
+            )
+            if log['verbose'] >= 1:
+                print(log['Spline Errors'][-1])
+            
+            return list(np.zeros(expected_roots//2) - np.inf), \
+                    list(np.zeros((expected_roots//2) - 1) - np.inf), \
+                    list(np.zeros(expected_roots) - np.inf)
+
+        # i = max_smoothing // 2
+        i_min = 0
+        i_max = max_smoothing - 1
+        while True:
+            print (i)
+            i = (i_min + i_max) // 2
             spline.set_smoothing_factor(i)
-            i+= 1
-            if i >50:
-                log['Spline Errors'].append(
-                    'expected root mismatch at element ' + str(idx)
-                )
-                if log['verbose'] >= 1:
-                    print(log['Spline Errors'][-1])
+            c_roots = len(spline.roots()) 
+            if c_roots != expected_roots:
+                i_min += + 1
+            elif c_roots == expected_roots:
+                i_max -=1
+            if i_min >= i_max:
+                break
+
+
+
+
+        # while len(spline.roots()) != expected_roots:            
+            # # spline.set_smoothing_factor(i)
+            # i+= 1
+            # if i > max_smoothing:
+            #     log['Spline Errors'].append(
+            #         'expected root mismatch at element ' + str(idx)
+            #     )
+            #     if log['verbose'] >= 1:
+            #         print(log['Spline Errors'][-1])
                 
-                return list(np.zeros(expected_roots//2) - np.inf), \
-                       list(np.zeros((expected_roots//2) - 1) - np.inf), \
-                       list(np.zeros(expected_roots) - np.inf)
+            #     return list(np.zeros(expected_roots//2) - np.inf), \
+            #            list(np.zeros((expected_roots//2) - 1) - np.inf), \
+            #            list(np.zeros(expected_roots) - np.inf)
     tdd = []
     fdd = []
     roots = []
