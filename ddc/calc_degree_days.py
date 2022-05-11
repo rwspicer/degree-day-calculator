@@ -210,10 +210,23 @@ def calc_grid_degree_days (
     if num_process is None:
        num_process = cpu_count()
     
-    indices = range(start, temp_grid.shape[1])
+    # indices = range(start, temp_grid.shape[1])
     
     if num_process == 1:
         num_process += 1 # need to have a better fix?
+
+    indices = range(start, temp_grid.shape[1])
+    # indices = range(start, temp_grid.shape[1])
+    print(
+        'calculating valid indices!'
+    )
+    indices = np.where(~np.isnan(temp_grid[0]))[0]
+
+
+    indices = indices[indices > start]
+
+    n_cells = temp_grid.shape[1]
+
     for idx in indices: # flatted area grid index
         
         while len(active_children()) >= num_process:
@@ -221,7 +234,7 @@ def calc_grid_degree_days (
         [gc.collect(i) for i in range(3)] # garbage collection
         log['Element Messages'].append(
             'calculating degree days for element ' + str(idx) + \
-            '. ~' + '%.2f' % ((idx/len(indices)) * 100) + '% complete.'
+            '. ~' + '%.2f' % ((idx/n_cells) * 100) + '% complete.'
         )
         if log['verbose'] >= 2:
             print(log['Element Messages'][-1])
@@ -269,8 +282,14 @@ def calc_grid_degree_days (
         log_grid[log_grid>=0] = 1 
         log_grid[log_grid==-np.inf] = 0
         np.save(os.path.join(logging_dir, 'interpolated.data'), log_grid)
-        shutil.copyfile(fdd_grid.filename, "temp_fdd_precleanup.data")
-        shutil.copyfile(tdd_grid.filename, "temp_tdd_precleanup.data")
+        shutil.copyfile(
+            fdd_grid.filename, 
+            os.path.join(logging_dir, "temp_fdd_precleanup.data")
+        )
+        shutil.copyfile(
+            tdd_grid.filename, 
+            os.path.join(logging_dir, "temp_tdd_precleanup.data")
+        )
 
     for cell in range(len(m_rows)):
         f_index = m_rows[cell] * shape[1] + m_cols[cell]  # 'flat' index of

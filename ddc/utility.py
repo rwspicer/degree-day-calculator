@@ -18,6 +18,27 @@ from multiprocessing import Manager, Lock
 
 from sort import sort_snap_files
 
+def create_or_load_dataset(
+        data_path, grid_shape, num_years, start_year, name, raster_metadata
+    ):
+    """create or load an existing dataset
+    """
+    if  os.path.isfile(data_path):
+        
+        grids = TemporalGrid(data_path)
+    else:
+        grids = TemporalGrid(
+            grid_shape[0], grid_shape[1], num_years, 
+            start_timestep=start_year,
+            # dataset_name = 'fdd',
+            mode='w+'
+        )
+        grids.config['raster_metadata'] = raster_metadata
+        grids.config['dataset_name'] = name
+        grids.save(data_path)
+        grids = TemporalGrid(data_path)
+    return grids
+
 def utility ():
     """Utility for calculating the freezing and thawing degree-days and saving
     them as tiffs
@@ -76,10 +97,16 @@ def utility ():
         flags = {
             '--in-temperature': 
                 {'required': True, 'type': str}, 
+            '--out-directory':  
+                {
+                    'required': False, 
+                    'type': str, 
+                    # 'default': Non
+                }, 
             '--out-fdd': 
-                {'required': True, 'type': str},
-            "--out-fdd": 
-                {'required': True, 'type': str},
+                {'required': False, 'type': str},
+            "--out-tdd": 
+                {'required': False, 'type': str},
             "--start-year": 
                 {'required': True, 'type': int}, 
 
@@ -97,14 +124,15 @@ def utility ():
                     'required': False, 'type': str, 'default':'default',
                     'accepted-values': ['default', 'snap']
                 },
+
             '--logging-dir': 
                 {'required': False, 'type': str },
             '--out-roots': 
-                {'required': False, 'type': str },
+                {'required': False, 'type': str, 'default': './temp-roots' },
             '--out-format': 
                 {
                     'required': False, 'default': 'tiff', 'type': str, 
-                    'accepted-values':['tiff','multigrid']
+                    'accepted-values':['tiff','multigrid', 'both']
                 },
             '--start-at': 
                 {'required': False, 'type': int, 'default': 0 },
@@ -115,6 +143,9 @@ def utility ():
         print (E)
         print(utility.__doc__)
         return
+
+    # print(arguments)
+    # sys.exit(0)
 
     verbosity = {'log':2, 'warn':1, '':0}[arguments['--verbose']]
     
@@ -133,25 +164,36 @@ def utility ():
     if verbosity >= 2:
         print('Seting up input...')
         print('\t', sort_method)
+
+    if arguments['--out-directory']:
+        out_fdd = os.path.join(arguments['--out-directory'], 'fdd')
+        out_tdd = os.path.join(arguments['--out-directory'], 'tdd')
+        out_roots = os.path.join(arguments['--out-directory'], 'roots')
+        logging_dir = os.path.join(arguments['--out-directory'], 'logs')
     
-    try: 
-        os.makedirs(arguments['--out-fdd'])
-    except:
-        pass
-    try: 
-        os.makedirs(arguments['--out-tdd'])
-    except:
-        pass
-    if arguments['--out-roots']:
-        try: 
-            os.makedirs(arguments['--out-roots'])
-        except:
-            pass
+    elif arguments['--out-fdd'] and arguments['--out-tdd']:
+        out_fdd = arguments['--out-fdd']
+        out_tdd = arguments['--out-tdd']
+        out_roots = arguments['--out-roots']
+        logging_dir = arguments['--logging-dir']
+    else:
+        print('Out directories  not specified. Use either:\n')
+        print('    --out-directory for a unified output directory\n')
+        print('  OR\n')
+        print('    --out-fdd, --out-tdd, --out-roots(optional) to specify\n')
+        print('    individual directories\n')
     
+    
+    for out_dir in out_fdd, out_tdd, out_roots:
+        if out_dir:
+            try: 
+                os.makedirs(out_dir)
+            except:
+                pass
+
     start_year = int(arguments['--start-year'])
 
-    num_processes = int(arguments['--num-processes']) \
-        if arguments['--num-processes']  else 1
+    num_processes = int(arguments['--num-processes'])
     
     if os.path.isfile(arguments['--in-temperature']):
         print('in file', arguments['--in-temperature'])
@@ -185,6 +227,9 @@ def utility ():
             "grid_names": temporal_grid_keys
             
         }
+        # print(load_params)
+        # print(create_params)
+
         monthly_temps = load_and_create(load_params, create_params)
         
         ex_raster = glob.glob(
@@ -203,38 +248,36 @@ def utility ():
             monthly_temps.config['num_grids']
 
     grid_shape = monthly_temps.config['grid_shape']
-    if  os.path.isfile(os.path.join(arguments['--out-fdd'], 'fdd.yml')):
-        fdd = TemporalGrid(os.path.join(arguments['--out-fdd'], 'fdd.yml'))
-    else:
-        fdd = TemporalGrid(
-            grid_shape[0], grid_shape[1], num_years, 
-            start_timestep=start_year,
-            dataset_name = 'fdd',
-            mode='w+'
-        )
-        fdd.config['raster_metadata'] = raster_metadata
-        fdd.config['dataset_name'] = 'freezing degree-day'
-        fdd.save(os.path.join(arguments['--out-fdd'], 'fdd.yml'))
-        fdd = TemporalGrid(os.path.join(arguments['--out-fdd'], 'fdd.yml'))
-    if  os.path.isfile(os.path.join(arguments['--out-tdd'], 'tdd.yml')):
-        tdd = TemporalGrid(os.path.join(arguments['--out-tdd'], 'tdd.yml'))
-    else:
-        
-        tdd = TemporalGrid(
-            grid_shape[0], grid_shape[1], num_years, 
-            start_timestep=start_year,
-            dataset_name = 'tdd',
-            mode='w+'
-        )
-        tdd.config['raster_metadata'] = raster_metadata
-        tdd.config['dataset_name'] = 'thawing degree-day'
-        tdd.save(os.path.join(arguments['--out-tdd'], 'tdd.yml'))
-        tdd = TemporalGrid(os.path.join(arguments['--out-tdd'], 'tdd.yml'))
 
-    roots = TemporalGrid(
-        grid_shape[0], grid_shape[1], num_years*2, 
-        dataset_name = 'tdd',
-        mode='w+'
+
+
+    # data_path, grid_shape, num_years, start_year, name, raster_metadata
+
+    fdd = create_or_load_dataset(
+        os.path.join(out_fdd, 'fdd.yml'), 
+        grid_shape, 
+        num_years, 
+        start_year, 
+        'freezing degree-day', 
+        raster_metadata
+    )
+
+    tdd = create_or_load_dataset(
+        os.path.join(out_tdd, 'tdd.yml'), 
+        grid_shape, 
+        num_years, 
+        start_year, 
+        'thawing degree-day', 
+        raster_metadata
+    )
+
+    roots = create_or_load_dataset(
+        os.path.join(out_roots, 'roots.yml'), 
+        grid_shape, 
+        num_years * 2, 
+        1901, 
+        'spline-roots', 
+        raster_metadata
     )
 
     days = create_day_array( 
@@ -253,6 +296,11 @@ def utility ():
     log['verbose'] = verbosity
 
     print('starting')
+    # print(fdd.grids.filename)
+    # print(tdd.grids.filename)
+    # print(roots.grids.filename)
+    # print(monthly_temps.grids.filename)
+
     calc_grid_degree_days(
             days, 
             monthly_temps.grids, 
@@ -263,7 +311,7 @@ def utility ():
             num_process = num_processes,
             log=log,
             roots_grid=roots.grids,
-            logging_dir = arguments['--logging-dir']
+            logging_dir = logging_dir
         )
 
     for item in log["Spline Errors"]:
@@ -276,51 +324,65 @@ def utility ():
         msg += ' at row:' + str(row) + ', col:' + str(col) + '.'
         print(msg)
 
-    try: 
-        os.makedirs(arguments['--out-fdd'])
-    except:
-        pass
-    try: 
-        os.makedirs(arguments['--out-tdd'])
-    except:
-        pass
-    if arguments['--out-roots']:
-        try: 
-            os.makedirs(arguments['--out-roots'])
-        except:
-            pass
+    # print(flags)
+    if arguments['--out-format'] in ['tiff', 'both']:
+        tdd.save_all_as_geotiff(out_tdd)
+        fdd.save_all_as_geotiff(out_fdd)
+        if out_roots != flags['--out-roots']['default']:
+            roots.save_all_as_geotiff(out_roots)
     
-    fdd.config['raster_metadata'] = raster_metadata
-    fdd.config['dataset_name'] = 'freezing degree-day'
+    if arguments['--out-format'] == 'tiff':
+        os.remove(os.path.join(out_tdd, 'tdd.yml'))
+        filename = tdd.grids.filename
+        os.remove(tdd.filter_file) if tdd.filter_file else None
+        os.remove(tdd.mask_file) if tdd.mask_file else None
+        del(tdd)
+        os.remove(filename)
 
-    if arguments['--out-format'] is None or \
-            arguments['--out-format'] == 'tiff' :
-        fdd.save_all_as_geotiff(arguments['--out-fdd'])
-    elif arguments['--out-format'] == 'multigrid':
-        fdd.config['command-used-to-create'] = ' '.join(sys.argv)
-        fdd.save(os.path.join(arguments['--out-fdd'], 'fdd.yml'))
+        os.remove(os.path.join(out_fdd, 'fdd.yml'))
+        filename = fdd.grids.filename
+        os.remove(fdd.filter_file) if fdd.filter_file else None
+        os.remove(fdd.mask_file) if fdd.mask_file else None
+        del(fdd)
+        os.remove(filename)
 
-    tdd.config['raster_metadata'] = raster_metadata
-    tdd.config['dataset_name'] = 'thawing degree-day'
-    # tdd.save_all_as_geotiff(arguments['--out-tdd'
-    if arguments['--out-format'] is None or \
-            arguments['--out-format'] == 'tiff' :
-        tdd.save_all_as_geotiff(arguments['--out-tdd'])
+        os.remove(os.path.join(out_roots, 'roots.yml'))
+        filename = roots.grids.filename
+        os.remove(roots.filter_file) if roots.filter_file else None
+        os.remove(roots.mask_file) if roots.mask_file else None
+        del(roots)
+        # print(filename)
+        os.remove(filename)
         
-    elif arguments['--out-format'] == 'multigrid':
-        tdd.config['command-used-to-create'] = ' '.join(sys.argv)
-        tdd.save(os.path.join(arguments['--out-tdd'], 'tdd.yml'))
+        
 
-    if arguments['--out-roots']:
-        roots.config['raster_metadata'] = raster_metadata
-        roots.config['dataset_name'] = 'roots'
-        # roots.save_all_as_geotiff(arguments['--out-roots'])
-        if arguments['--out-format'] is None or \
-            arguments['--out-format'] == 'tiff' :
-            roots.save_all_as_geotiff(arguments['--out-roots'])
-        elif arguments['--out-format'] == 'multigrid':
-            roots.config['command-used-to-create'] = ' '.join(sys.argv)
-            roots.save(os.path.join(arguments['--out-roots'], 'roots.yml'))
+    if arguments['--out-format'] in ['multigrid','both']:
+        fdd.config['command-used-to-create'] = ' '.join(sys.argv)
+        tdd.config['command-used-to-create'] = ' '.join(sys.argv)
+        roots.config['command-used-to-create'] = ' '.join(sys.argv)
+        # tdd.save_all_as_geotiff(arguments['--out-tdd'])
+        # fdd.save_all_as_geotiff(arguments['--out-fdd'])
+        # if arguments['--out-roots']:
+        #     roots.save_all_as_geotiff(arguments['--out-roots'])
+
+    # if arguments['--out-format'] is None or \
+    #         arguments['--out-format'] == 'tiff' :
+    #     tdd.save_all_as_geotiff(arguments['--out-tdd'])
+        
+    # elif arguments['--out-format'] == 'multigrid':
+    #     tdd.config['command-used-to-create'] = ' '.join(sys.argv)
+    #     tdd.save(os.path.join(arguments['--out-tdd'], 'tdd.yml'))
+
+    # if arguments['--out-roots']:
+    #     roots.config['raster_metadata'] = raster_metadata
+    #     roots.config['dataset_name'] = 'roots'
+    #     # roots.save_all_as_geotiff(arguments['--out-roots'])
+    #     if arguments['--out-format'] is None or \
+    #         arguments['--out-format'] == 'tiff' :
+    #         roots.save_all_as_geotiff(arguments['--out-roots'])
+    #     elif arguments['--out-format'] == 'multigrid':
+    #         roots.config['command-used-to-create'] = ' '.join(sys.argv)
+    #         roots.save(os.path.join(arguments['--out-roots'], 'roots.yml'))
 
         # roots.save('./out_roots.yml')
 
