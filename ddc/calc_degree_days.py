@@ -4,6 +4,7 @@ Calc Degree Days
 
 Tools for calculating and storing spatial degree days values from temperature
 """
+from cmath import exp
 import os
 from re import I
 import shutil
@@ -62,10 +63,14 @@ def calc_degree_days(
         thawing and freezing degree day lists
     """
     spline = interpolate.UnivariateSpline(day_array, temp_array)
-    if not expected_roots is None and len(spline.roots()) != expected_roots:
-        
+    if not expected_roots is None and len(spline.roots()) != expected_roots:    
+        for i in range(1, max_smoothing):
+            spline.set_smoothing_factor(i)
+            c_roots = len(spline.roots()) 
+            # print ('smoothing factor', i, 'roots->', c_roots)
+            if c_roots == expected_roots:
+                break
 
-        spline.set_smoothing_factor(max_smoothing) ## try max
         if len(spline.roots()) != expected_roots:
             log['Spline Errors'].append(
                 'expected root mismatch at element ' + str(idx)
@@ -77,37 +82,6 @@ def calc_degree_days(
                     list(np.zeros((expected_roots//2) - 1) - np.inf), \
                     list(np.zeros(expected_roots) - np.inf)
 
-        # i = max_smoothing // 2
-        i_min = 0
-        i_max = max_smoothing - 1
-        while True:
-            print (i)
-            i = (i_min + i_max) // 2
-            spline.set_smoothing_factor(i)
-            c_roots = len(spline.roots()) 
-            if c_roots != expected_roots:
-                i_min += + 1
-            elif c_roots == expected_roots:
-                i_max -=1
-            if i_min >= i_max:
-                break
-
-
-
-
-        # while len(spline.roots()) != expected_roots:            
-            # # spline.set_smoothing_factor(i)
-            # i+= 1
-            # if i > max_smoothing:
-            #     log['Spline Errors'].append(
-            #         'expected root mismatch at element ' + str(idx)
-            #     )
-            #     if log['verbose'] >= 1:
-            #         print(log['Spline Errors'][-1])
-                
-            #     return list(np.zeros(expected_roots//2) - np.inf), \
-            #            list(np.zeros((expected_roots//2) - 1) - np.inf), \
-            #            list(np.zeros(expected_roots) - np.inf)
     tdd = []
     fdd = []
     roots = []
@@ -166,23 +140,23 @@ def calc_and_store  (
 
     lock.acquire()
     # print(tdd, fdd, roots)
-    try:
-        tdd_grid[:,index] = tdd
+    # try:
+    tdd_grid[:,index] = tdd
         ## FDD array is not long enough (len(tdd) - 1) on its own, so we use the 
         # first winter value twice this works because the the spline curves are
         # created will always have a first root going from negative to positistve
         # This works for northern alaska and should not be assumed else where.\
         ##
 
-        fdd_grid[:,index] = fdd + [fdd[-1]] # I.E. if last year of data is 2015, the 
+    fdd_grid[:,index] = fdd + [fdd[-1]] # I.E. if last year of data is 2015, the 
                                         # fdd for 2015 is set to fdd for 2014
 
-        if not roots_grid is None:
-            roots_grid[:,index] = roots
+    if not roots_grid is None:
+        roots_grid[:,index] = roots
     
-    except ValueError as e:
-        pass # not sure why this is here but it looks good
-        print ("NEW_ERROR at", index,":", str(e))
+    # except ValueError as e:
+    #     pass # not sure why this is here but it looks good
+    #     print ("NEW_ERROR at", index,":", str(e))
 
     lock.release()
 
@@ -316,6 +290,12 @@ def calc_grid_degree_days (
             tdd_grid.filename, 
             os.path.join(logging_dir, "temp_tdd_precleanup.data")
         )
+
+    log['Element Messages'].append(
+        'Interpolating missing data pixels ...' 
+    )
+    if log['verbose'] >= 1:
+        print(log['Element Messages'][-1])
 
     for cell in range(len(m_rows)):
         f_index = m_rows[cell] * shape[1] + m_cols[cell]  # 'flat' index of
