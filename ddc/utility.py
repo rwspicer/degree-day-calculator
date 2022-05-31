@@ -334,19 +334,28 @@ def utility ():
     # print(tdd.grids.filename)
     # print(roots.grids.filename)
     # print(monthly_temps.grids.filename)
-
-    calc_grid_degree_days(
-            days, 
-            monthly_temps.grids, 
-            tdd.grids, 
-            fdd.grids, 
-            grid_shape, 
-            start= int(arguments['--start-at']) if arguments['--start-at'] else 0,
-            num_process = num_processes,
-            log=log,
-            roots_grid=roots.grids,
-            logging_dir = logging_dir
-        )
+    calc_grid_degree_days (
+        monthly_temps, 
+        tdd, 
+        fdd, 
+        roots,
+        start = int(arguments['--start-at']) if arguments['--start-at'] else 0, 
+        num_process = num_processes,
+        log=log, 
+        logging_dir=logging_dir
+    )
+    # calc_grid_degree_days(
+    #         days, 
+    #         monthly_temps.grids, 
+    #         tdd.grids, 
+    #         fdd.grids, 
+    #         grid_shape, 
+    #         start= int(arguments['--start-at']) if arguments['--start-at'] else 0,
+    #         num_process = num_processes,
+    #         log=log,
+    #         roots_grid=roots.grids,
+    #         logging_dir = logging_dir
+    #     )
 
     for item in log["Spline Errors"]:
         words = item.split(' ')
