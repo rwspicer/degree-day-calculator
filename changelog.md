@@ -11,6 +11,9 @@
 - rewrote cli
 - saving/loading has been rewritten
 
+### removed
+-- local copy of multigrids
+
 ## 1.1.1 [2022-02-08]
 ### fixed
 - Bug with multiprocessing Manager()
