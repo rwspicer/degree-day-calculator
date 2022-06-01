@@ -67,50 +67,63 @@ def calc_degree_days_for_cell (
         2d grid of # years by flattend grid size X2. where roots are stored
         
     """
-    expected_roots = 2 * len(tdd.config['num_timesteps'])
+    expected_roots = 2 * tdd.config['num_timesteps']
+    # print('->>', expected_roots, use_fallback)
     row, col = index
     
     days = monthly_temps.convert_timesteps_to_julian_days()
     temps = monthly_temps[:, row, col]
     spline = interpolate.UnivariateSpline(days, temps)
+    # print('->>', expected_roots,len(spline.roots()), use_fallback)
 
-    tdd = []
-    fdd = []
-    roots = []
+    tdd_temp = []
+    fdd_temp = []
+    roots_temp = []
 
-    
+    if len(spline.roots()) != expected_roots:
+        for sf in range(1,51):
+            
+            spline.set_smoothing_factor(sf)
+            # print('->>', expected_roots,len(spline.roots()), use_fallback)
+            if len(spline.roots()==expected_roots):
+                break
+
+    # print('->>', expected_roots,len(spline.roots()), use_fallback)
+
     if len(spline.roots()) == expected_roots and not use_fallback: 
-
+        # print('default')
         for rdx in range(len(spline.roots())-1):
             val = spline.integral(spline.roots()[rdx], spline.roots()[rdx+1])
             if val > 0:
-                roots.append(spline.roots()[rdx])
-                tdd.append(val)
+                roots_temp.append(spline.roots()[rdx])
+                tdd_temp.append(val)
             else:
-                fdd.append(val)
-                roots.append(-1 * spline.roots()[rdx])
+                fdd_temp.append(val)
+                roots_temp.append(-1 * spline.roots()[rdx])
 
-        fdd.append(np.inf)
+        fdd_temp.append(+8000) # dummy value
 
-        roots.append(spline.roots()[-1]  * roots[-1]/abs(roots[-1]) * -1) 
+        roots_temp.append(spline.roots()[-1]  * roots_temp[-1]/abs(roots_temp[-1]) * -1) 
 
         method_map[row, col] = 1
+        
     else:
         # default = False
-        start= list(data.config['grid_name_map'].keys())[0]
+        # print('fallback')
+        start= list(monthly_temps.config['grid_name_map'].keys())[0]
 
-        start_year = list(data.config['grid_name_map'].keys())[0].year
-        end_year = list(data.config['grid_name_map'].keys())[-1].year + 1
+        start_year = list(monthly_temps.config['grid_name_map'].keys())[0].year
+        end_year = list(monthly_temps.config['grid_name_map'].keys())[-1].year + 1
         
         delta_year = relativedelta(years=1) 
         delta_6_months = relativedelta(months=6)
 
         for year in range(end_year-start_year):
-            start_tdd = list(data.config['grid_name_map'].keys())[0] + \
+            start_tdd = list(monthly_temps.config['grid_name_map'].keys())[0] + \
                 delta_year * year
             end_tdd = start_tdd + delta_year
 
-            start_fdd = list(data.config['grid_name_map'].keys())[0] + \
+            start_fdd = list(monthly_temps.config['grid_name_map'].keys())[0] + \
                 delta_year * year + delta_6_months
             end_fdd = (start_fdd + delta_year)
     
@@ -131,7 +144,7 @@ def calc_degree_days_for_cell (
                 val = spline.integral(s,e)
                 tdd_val.append(val)
                 if idx == 1:
-                    roots.append(e)
+                    roots_temp.append(e)
 
             tdd_val = sum([v for v in tdd_val if v > 0])
             
@@ -142,15 +155,19 @@ def calc_degree_days_for_cell (
                 val = spline.integral(s,e)
                 fdd_val.append(val)
                 if idx == 1:
-                    roots.append(-1 * e)
+                    roots_temp.append(-1 * e)
             fdd_val = sum([v for v in fdd_val if v < 0])
-            fdd.append(fdd_val)
-            tdd.append(tdd_val)
+            fdd_temp.append(fdd_val)
+            tdd_temp.append(tdd_val)
             method_map[row, col] = 2
 
+    # print (tdd)
+    
+    # tdd = np.arrtdd))
+    # fdd = np.array(len(fdd))
     lock.acquire()
     
-    tdd[:,row, col] = tdd
+    tdd[:, row, col] = np.array(tdd_temp)
     
 
 
@@ -160,10 +177,12 @@ def calc_degree_days_for_cell (
     # This works for northern alaska and should not be assumed else where.\
 
     ## NOTE: the last fdd values is either set to a dummy val or only 
-    ## partial fdd
-    fdd[:,row, col] = fdd[:-1] + [fdd[-1]] # I.E. if last year of data is 2015, the 
+    ## partial fdd so use second to last value
+    fdd_temp = fdd_temp[:-1] + [fdd_temp[-2]] 
+    fdd[:,row, col] = np.array( fdd_temp )
+                                        # I.E. if last year of data is 2015, the 
                                         # fdd for 2015 is set to fdd for 2014
-    roots[:,row, col] = roots
+    roots[:,row, col] = np.array(roots_temp)
     
     # except ValueError as e:
     #     pass # not sure why this is here but it looks good
@@ -176,7 +195,8 @@ def calc_grid_degree_days (
         start = 0, num_process = 1, 
         log={'Element Messages': [], 'verbose':0},
         logging_dir=None,
-        use_fallback=False
+        use_fallback=False,
+        recalc_mask = None,
     ):
     """Calculate degree days (Thawing, and Freezing) for an area. 
     
@@ -223,6 +243,10 @@ def calc_grid_degree_days (
     cells
         indexes of interpolated locations
     """
+    monthly_temps = data['monthly-temperature']
+    tdd = data['tdd']
+    fdd = data['fdd']
+    roots = data['roots']
     w_lock = Lock()
     
     if num_process == 1:
@@ -232,21 +256,30 @@ def calc_grid_degree_days (
 
     shape=monthly_temps.config['grid_shape']
     
+    temp = mkdtemp()
     method_map = np.memmap(
-        mkdtemp(), shape=shape,
-        dtype = float
+        os.path.join(temp,'methodmap.data'), shape=shape,
+        dtype = float, mode='w+',
     )
     method_map[:] = np.nan
-    monthly_temps = data['monthly-temperature']
-    tdd = data['tdd']
-    fdd = data['fdd']
-    roots = data['roots']
+    
 
     print('Calculating valid indices!')
 
     # indices = range(start, temp_grid.shape[1])
-    init = monthly_temps[monthly_temps.config['start_timestamp']].flatten()
-    indices = np.where(~np.isnan(init))[0]
+    init = monthly_temps[monthly_temps.config['start_timestep']].flatten()
+    indices = ~np.isnan(init)
+    if not recalc_mask is None:
+        mask = recalc_mask.flatten()
+        indices = np.logical_and(indices, mask)
+
+    indices = np.where(indices)[0]
+    
+
+
+
+
+
     indices = indices[indices > start]
 
     n_cells = shape[0] * shape[1]

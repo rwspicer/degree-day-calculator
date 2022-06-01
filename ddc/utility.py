@@ -9,7 +9,7 @@ from datetime import datetime
 
 import numpy as np
 
-from calc_degree_days import calc_grid_degree_days, create_day_array
+from calc_degree_days import calc_grid_degree_days#, create_day_array
 from multigrids.tools import load_and_create, get_raster_metadata
 from multigrids import TemporalGrid
 from spicebox import CLILib
@@ -140,6 +140,7 @@ def utility ():
                     'required': False, 'default': 'eq', 'type': str, 
                     'accepted-values':['eq','ne', 'lt', 'gt', 'lte', 'gte']
                 },
+            '--recalc-mask-file': {'required':False, 'type':str},
             '--verbose': 
                 {
                     'required': False, 'type': str, 'default': '', 
@@ -163,6 +164,7 @@ def utility ():
                 {'required': False, 'type': int, 'default': 0 },
             '--save-temp-monthly':
                 {'required': False, 'type': bool, 'default': False },
+            '--alaways-fallback':  {'required': False, 'type': bool, 'default': False },
             
         }
 
@@ -276,14 +278,21 @@ def utility ():
             elif arguments['--mask-comp'] == 'lte':
                 no_data_idx =     monthly_temps.grids <= mask
             elif arguments['--mask-comp'] == 'gte':
-                no_data_idx =     monthly_temps.grids >= mask            
+                no_data_idx =     monthly_temps.grids >= mask   
+            # elif arguments['--mask-comp'] == 'map':
+            #     no_data_idx = monthly_temps.grids == 0          
             monthly_temps.grids[no_data_idx] = np.nan
+
+        
             
         monthly_temps.config['num_timesteps'] = \
             monthly_temps.config['num_grids']
         
         monthly_temps.save('temp-monthly-temperature-data.yml')
 
+    recalc_mask = None
+    if not arguments['--recalc-mask-file'] is None:
+        recalc_mask = np.load(arguments['--recalc-mask-file']).astype(int) == 1
     
     grid_shape = monthly_temps.config['grid_shape']
 
@@ -315,12 +324,12 @@ def utility ():
     )
     roots.config['delta_timestep'] = "varies"
 
-    days = create_day_array( 
-        [ datetime.strptime(d, '%Y-%m') for d in list(
-            monthly_temps.config['grid_name_map'].keys()
-            )
-        ] 
-    )
+    # days = create_day_array( 
+    #     [ datetime.strptime(d, '%Y-%m') for d in list(
+    #         monthly_temps.config['grid_name_map'].keys()
+    #         )
+    #      ] 
+    # )
 
     manager = Manager()  
     log = manager.dict() 
@@ -334,15 +343,20 @@ def utility ():
     # print(tdd.grids.filename)
     # print(roots.grids.filename)
     # print(monthly_temps.grids.filename)
+    data = {
+        'monthly-temperature': monthly_temps,
+        'tdd': tdd,
+        'fdd': fdd,
+        'roots': roots
+    }
     calc_grid_degree_days (
-        monthly_temps, 
-        tdd, 
-        fdd, 
-        roots,
+        data,
         start = int(arguments['--start-at']) if arguments['--start-at'] else 0, 
         num_process = num_processes,
         log=log, 
-        logging_dir=logging_dir
+        logging_dir=logging_dir,
+        use_fallback=arguments['--alaways-fallback'],
+        recalc_mask = recalc_mask,
     )
     # calc_grid_degree_days(
     #         days, 
