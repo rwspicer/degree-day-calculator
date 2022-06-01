@@ -4,13 +4,21 @@ Calc Degree Days
 
 Tools for calculating and storing spatial degree days values from temperature
 """
+from cmath import exp
 import os
+from re import I
 import shutil
 import gc
 import warnings
 from multiprocessing import Process, Lock, active_children, cpu_count 
 from multiprocessing import set_start_method
 from copy import deepcopy
+from tempfile import mkdtemp
+
+from dateutil.relativedelta import relativedelta
+
+from progress.bar import Bar
+
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -26,78 +34,15 @@ ROW, COL = 0, 1
 
 warnings.filterwarnings("ignore")
 
-# Some Mac OS nonsense for python>=3.8. Macos uses 'spanw' now instead of
+# Some Mac OS nonsense for python>=3.8. Macos uses 'spawn' now instead of
 # 'fork' but that causes issues with passing np.memmap objcets. Anyway
 # this might be unstable on Mac OS now
 set_start_method('fork') 
 
 
-def calc_degree_days(
-            day_array, temp_array, expected_roots = None,
-            log={'Spline Errors': [], 'verbose':0}, idx="Unknown",
-            keep_roots = False
-        ):
-    """Calc degree days (thawing, and freezing)
-    
-    Parameters
-    ----------
-    day_array: list like
-        day number for each temperature value. 
-        len(days_array) == len(temp_array).
-    temp_array: list like
-        Temperature values. len(days_array) == len(temp_array).
-    expected_roots: int, None
-        # of roots expected to find
-    log: dict
-    idx: str or int
-        idx label used for writing the log
-    keep_roots: bool
-        if true roots are returned with fdd and tdd arrays
-    
-        
-    Returns
-    -------
-    tdd, fdd: lists
-        thawing and freezing degree day lists
-    """
-    spline = interpolate.UnivariateSpline(day_array, temp_array)
-    if not expected_roots is None and len(spline.roots()) != expected_roots:
-        i = 1
-        while len(spline.roots()) != expected_roots:            
-            spline.set_smoothing_factor(i)
-            i+= 1
-            if i >50:
-                log['Spline Errors'].append(
-                    'expected root mismatch at element ' + str(idx)
-                )
-                if log['verbose'] >= 1:
-                    print(log['Spline Errors'][-1])
-                
-                return list(np.zeros(expected_roots//2) - np.inf), \
-                       list(np.zeros((expected_roots//2) - 1) - np.inf), \
-                       list(np.zeros(expected_roots) - np.inf)
-    tdd = []
-    fdd = []
-    roots = []
-    for rdx in range(len(spline.roots())-1):
-        val = spline.integral(spline.roots()[rdx], spline.roots()[rdx+1])
-        if val > 0:
-            roots.append(spline.roots()[rdx])
-            tdd.append(val)
-        else:
-            fdd.append(val)
-            roots.append(-1 * spline.roots()[rdx])
-
-    roots.append(spline.roots()[-1]  * roots[-1]/abs(roots[-1]) * -1)  
-
-    if keep_roots:
-        return tdd, fdd, roots
-    return tdd, fdd
-
-
-def calc_and_store  (
-        index, day_array, temp_array, tdd_grid, fdd_grid, lock = Lock(),
-        log={'verbose':0}, roots_grid = None
+def calc_degree_days_for_cell (
+        index, monthly_temps, tdd, fdd, roots, method_map, lock = Lock(),
+        log={'verbose':0}, use_fallback = False
         ):
     """Caclulate degree days (thawing, and freezing) and store in to 
     a grid.
@@ -122,44 +67,137 @@ def calc_and_store  (
         2d grid of # years by flattend grid size X2. where roots are stored
         
     """
-    expected_roots = 2 * len(tdd_grid)
-    if roots_grid is None:
-        tdd, fdd  = calc_degree_days(
-            day_array, temp_array, expected_roots, log, index, False
-        )
-    else:
-        tdd, fdd, roots  = calc_degree_days(
-            day_array, temp_array, expected_roots, log, index, True
-        )
-
-    lock.acquire()
-    try:
-        tdd_grid[:,index] = tdd
-        ## FDD array is not long enough (len(tdd) - 1) on its own, so we use the 
-        # first winter value twice this works because the the spline curves are
-        # created will always have a first root going from negative to positistve
-        # This works for northern alaska and should not be assumed else where.\
-        ##
-
-        fdd_grid[:,index] = fdd + [fdd[-1]] # I.E. if last year of data is 2015, the 
-                                        # fdd for 2015 is set to fdd for 2014
-
-        if not roots_grid is None:
-            roots_grid[:,index] = roots
+    expected_roots = 2 * tdd.config['num_timesteps']
+    # print('->>', expected_roots, use_fallback)
+    row, col = index
     
-    except ValueError as e:
-        pass # not sure why this is here but it looks good
-        print ("NEW_ERROR at", index,":", str(e))
+    days = monthly_temps.convert_timesteps_to_julian_days()
+    temps = monthly_temps[:, row, col]
+    spline = interpolate.UnivariateSpline(days, temps)
+    # print('->>', expected_roots,len(spline.roots()), use_fallback)
+
+    tdd_temp = []
+    fdd_temp = []
+    roots_temp = []
+
+    if len(spline.roots()) != expected_roots:
+        for sf in range(1,51):
+            
+            spline.set_smoothing_factor(sf)
+            # print('->>', expected_roots,len(spline.roots()), use_fallback)
+            if len(spline.roots()==expected_roots):
+                break
+
+    # print('->>', expected_roots,len(spline.roots()), use_fallback)
+
+    if len(spline.roots()) == expected_roots and not use_fallback: 
+        # print('default')
+        for rdx in range(len(spline.roots())-1):
+            val = spline.integral(spline.roots()[rdx], spline.roots()[rdx+1])
+            if val > 0:
+                roots_temp.append(spline.roots()[rdx])
+                tdd_temp.append(val)
+            else:
+                fdd_temp.append(val)
+                roots_temp.append(-1 * spline.roots()[rdx])
+
+        fdd_temp.append(+8000) # dummy value
+
+        roots_temp.append(spline.roots()[-1]  * roots_temp[-1]/abs(roots_temp[-1]) * -1) 
+
+        method_map[row, col] = 1
+        
+    else:
+        # default = False
+        # print('fallback')
+        start= list(monthly_temps.config['grid_name_map'].keys())[0]
+
+        start_year = list(monthly_temps.config['grid_name_map'].keys())[0].year
+        end_year = list(monthly_temps.config['grid_name_map'].keys())[-1].year + 1
+        
+        delta_year = relativedelta(years=1) 
+        delta_6_months = relativedelta(months=6)
+
+        for year in range(end_year-start_year):
+            start_tdd = list(monthly_temps.config['grid_name_map'].keys())[0] + \
+                delta_year * year
+            end_tdd = start_tdd + delta_year
+
+            start_fdd = list(monthly_temps.config['grid_name_map'].keys())[0] + \
+                delta_year * year + delta_6_months
+            end_fdd = (start_fdd + delta_year)
+    
+            start_tdd = (start_tdd - start).days
+            end_tdd =   (end_tdd- start).days
+            start_fdd = (start_fdd- start).days
+            end_fdd = (end_fdd- start).days
+    
+            fdd_roots = sorted([start_fdd, end_fdd] + \
+                [i for i in spline.roots() if start_fdd < i <= end_fdd])
+            tdd_roots = sorted([start_tdd, end_tdd] + \
+                [i for i in spline.roots() if start_tdd < i <= end_tdd])
+    
+            tdd_val = []
+            for idx in range(1,len(tdd_roots)):
+                s = tdd_roots[idx-1]
+                e = tdd_roots[idx]
+                val = spline.integral(s,e)
+                tdd_val.append(val)
+                if idx == 1:
+                    roots_temp.append(e)
+
+            tdd_val = sum([v for v in tdd_val if v > 0])
+            
+            fdd_val = []
+            for idx in range(1,len(fdd_roots)):
+                s = fdd_roots[idx-1]
+                e = fdd_roots[idx]
+                val = spline.integral(s,e)
+                fdd_val.append(val)
+                if idx == 1:
+                    roots_temp.append(-1 * e)
+            fdd_val = sum([v for v in fdd_val if v < 0])
+            fdd_temp.append(fdd_val)
+            tdd_temp.append(tdd_val)
+            method_map[row, col] = 2
+
+    # print (tdd)
+    
+    # tdd = np.arrtdd))
+    # fdd = np.array(len(fdd))
+    lock.acquire()
+    
+    tdd[:, row, col] = np.array(tdd_temp)
+    
+
+
+    ## FDD array is not long enough (len(tdd) - 1) on its own, so we use the 
+    # first winter value twice this works because the the spline curves are
+    # created will always have a first root going from negative to positistve
+    # This works for northern alaska and should not be assumed else where.\
+
+    ## NOTE: the last fdd values is either set to a dummy val or only 
+    ## partial fdd so use second to last value
+    fdd_temp = fdd_temp[:-1] + [fdd_temp[-2]] 
+    fdd[:,row, col] = np.array( fdd_temp )
+                                        # I.E. if last year of data is 2015, the 
+                                        # fdd for 2015 is set to fdd for 2014
+    roots[:,row, col] = np.array(roots_temp)
+    
+    # except ValueError as e:
+    #     pass # not sure why this is here but it looks good
+    #     print ("NEW_ERROR at", index,":", str(e))
 
     lock.release()
 
-
 def calc_grid_degree_days (
-        day_array, temp_grid, tdd_grid, fdd_grid, shape, 
+        data,
         start = 0, num_process = 1, 
-        log={'Element Messages': [], 'verbose':0}, roots_grid = None,
-        logging_dir=None
-        ):
+        log={'Element Messages': [], 'verbose':0},
+        logging_dir=None,
+        use_fallback=False,
+        recalc_mask = None,
+    ):
     """Calculate degree days (Thawing, and Freezing) for an area. 
     
     Parameters
@@ -205,46 +243,89 @@ def calc_grid_degree_days (
     cells
         indexes of interpolated locations
     """
+    monthly_temps = data['monthly-temperature']
+    tdd = data['tdd']
+    fdd = data['fdd']
+    roots = data['roots']
     w_lock = Lock()
-    
-    if num_process is None:
-       num_process = cpu_count()
-    
-    indices = range(start, temp_grid.shape[1])
     
     if num_process == 1:
         num_process += 1 # need to have a better fix?
-    for idx in indices: # flatted area grid index
-        
-        while len(active_children()) >= num_process:
-            continue
-        [gc.collect(i) for i in range(3)] # garbage collection
-        log['Element Messages'].append(
-            'calculating degree days for element ' + str(idx) + \
-            '. ~' + '%.2f' % ((idx/len(indices)) * 100) + '% complete.'
-        )
-        if log['verbose'] >= 2:
-            print(log['Element Messages'][-1])
+    elif num_process is None:
+       num_process = cpu_count()
 
-        if (temp_grid[:,idx] == -9999).all() or \
-                (np.isnan(temp_grid[:,idx])).all():
-            tdd_grid[:,idx] = np.nan
-            fdd_grid[:,idx] = np.nan
-            if not roots_grid is None:
-                roots_grid[:,idx] = np.nan
-            log['Element Messages'].append(
-                'Skipping element for missing values at ' + str(idx)
-            )
-            print(log['Element Messages'][-1])
-            continue
+    shape=monthly_temps.config['grid_shape']
+    
+    temp = mkdtemp()
+    method_map = np.memmap(
+        os.path.join(temp,'methodmap.data'), shape=shape,
+        dtype = float, mode='w+',
+    )
+    method_map[:] = np.nan
+    
 
-        Process(target=calc_and_store,
-            name = "calc degree day at elem " + str(idx),
-            args=(
-                idx,day_array,temp_grid[:,idx], tdd_grid, fdd_grid, w_lock, log,
-                roots_grid
-            )
-        ).start()
+    print('Calculating valid indices!')
+
+    # indices = range(start, temp_grid.shape[1])
+    init = monthly_temps[monthly_temps.config['start_timestep']].flatten()
+    indices = ~np.isnan(init)
+    if not recalc_mask is None:
+        mask = recalc_mask.flatten()
+        indices = np.logical_and(indices, mask)
+
+    indices = np.where(indices)[0]
+    
+
+
+
+
+
+    indices = indices[indices > start]
+
+    n_cells = shape[0] * shape[1]
+
+    with Bar('Calculating Degree-days',  max=n_cells) as bar:
+        for idx in indices: # flatted area grid index
+            row, col = np.unravel_index(idx, shape)
+            while len(active_children()) >= num_process:
+                continue
+            [gc.collect(i) for i in range(3)] # garbage collection
+            # log['Element Messages'].append(
+            #     'calculating degree days for element ' + str(idx) + \
+            #     '. ~' + '%.2f' % ((idx/n_cells) * 100) + '% complete.'
+            # )
+            # if log['verbose'] >= 2:
+                # print(log['Element Messages'][-1])
+
+            # if (monthly_temps[:,row, col] == -9999).all() or \
+            #         (np.isnan(monthly_temps[:,idx])).all():
+            #     monthly_temps[:,row, col] = np.nan
+            #     monthly_temps[:,row, col] = np.nan
+            #     if not roots_grid is None:
+            #         roots_grid[:,idx] = np.nan
+            #     log['Element Messages'].append(
+            #         'Skipping element for missing values at ' + str(idx)
+            #     )
+            #     print(log['Element Messages'][-1])
+            #     continue
+
+            index = row, col
+            if num_process == 1:
+                calc_degree_days_for_cell(
+                    index, monthly_temps, tdd, fdd, roots,  
+                    method_map, w_lock, log, use_fallback
+                )
+            else:
+                Process(
+                    target=calc_degree_days_for_cell,
+                    name = "calc degree day at elem " + str(idx),
+                    args = (
+                        index, monthly_temps, tdd, fdd, roots,  
+                        method_map, w_lock, log,  use_fallback,
+                    )
+                ).start()
+            bar.index = idx-1
+            bar.next()
     
     while len(active_children()) > 0 :
         if len(active_children()) == 1:
@@ -254,106 +335,142 @@ def calc_grid_degree_days (
                 break
             
         continue
-    
-    ## fix missing cells
-    m_rows, m_cols = np.where(tdd_grid[0].reshape(shape) == -np.inf)   
-    cells = []
 
     if logging_dir:
         try: 
             os.makedirs(logging_dir)
         except:
             pass
-        log_grid = deepcopy(tdd_grid[0].reshape(shape))
-        np.save(os.path.join(logging_dir, 'pre_cleanup_example.data'), log_grid)
-        log_grid[log_grid>=0] = 1 
-        log_grid[log_grid==-np.inf] = 0
-        np.save(os.path.join(logging_dir, 'interpolated.data'), log_grid)
-        shutil.copyfile(fdd_grid.filename, "temp_fdd_precleanup.data")
-        shutil.copyfile(tdd_grid.filename, "temp_tdd_precleanup.data")
+        np.save(os.path.join(logging_dir, 'methods.data'), method_map)
+        with open(os.path.join(logging_dir, 'methods.readme.txt'), 'w') as fd:
+            fd.write(
+                'Nan values -> no input-data\n'
+                '1 -> default spline method used\n'
+                '2 -> range spline method used\n'
+            )
 
-    for cell in range(len(m_rows)):
-        f_index = m_rows[cell] * shape[1] + m_cols[cell]  # 'flat' index of
-        # cell location
-        
-        g_tdd = np.array(
-            tdd_grid.reshape((tdd_grid.shape[0],shape[0],shape[1]))\
-                [:,m_rows[cell]-1:m_rows[cell]+2,m_cols[cell]-1:m_cols[cell]+2]
-        ) # Find kernel of surrounding cells
-        
-        g_fdd = np.array(
-            fdd_grid.reshape((fdd_grid.shape[0],shape[0],shape[1]))\
-                [:,m_rows[cell]-1:m_rows[cell]+2,m_cols[cell]-1:m_cols[cell]+2]
-        )# Find kernel of surrounding cells
 
-        g_roots = np.array(
-            roots_grid.reshape((roots_grid.shape[0],shape[0],shape[1]))\
-                [:,m_rows[cell]-1:m_rows[cell]+2,m_cols[cell]-1:m_cols[cell]+2]
-        )# Find kernel of surrounding cells
-        
-        g_tdd[g_tdd == -np.inf] = np.nan ## remove extra -infs
-        g_fdd[g_fdd == -np.inf] = np.nan
-        g_roots[g_roots == -np.inf] = np.nan
-
-        # calc means
-        tdd_mean = np.nanmean(g_tdd.reshape(tdd_grid.shape[0],9),axis = 1)
-        fdd_mean = np.nanmean(g_fdd.reshape(fdd_grid.shape[0],9),axis = 1)
-        roots_mean = np.nanmean(g_roots.reshape(roots_grid.shape[0],9),axis = 1)
-        roots_mean = roots_mean.round().astype(int) # covert roots mean to 
-        # nearest day
-
-        ## assign days
-        tdd_grid[:,f_index] = tdd_mean
-        fdd_grid[:,f_index] = fdd_mean
-        roots_grid[:,f_index] = roots_means
-        cells.append(f_index)
-            
-    return cells
-        
-
-def create_day_array (dates):
-    """Calculates number of days after start day for each date in dates array
+def log(logging_dir, data):
+    """old style logging
+    """
     
+    start_ts = data['tdd'].config['start_timestep']
+    # shape = data['tdd'].config['grid_shape']
+
+    log_grid = deepcopy(data['tdd'][start_ts])
+
+    np.save(os.path.join(logging_dir, 'pre-cleanup-example.data'), log_grid)
+
+    log_grid[log_grid>=0] = 1 
+    log_grid[log_grid==-np.inf] = 0
+    np.save(os.path.join(logging_dir, 'interpolated-mask.data'), log_grid)
+
+    shutil.copyfile(
+        data['fdd'].filename, 
+        os.path.join(logging_dir, "temp-fdd-pre-cleanup.data")
+    )
+
+    shutil.copyfile(
+        data['tdd'].filename, 
+        os.path.join(logging_dir, "temp-tdd-pre-cleanup.data")
+    )        
+
+def fill_missing_by_interpolation(
+        data, locations, log, func=np.nanmean, reset_locations = False
+    ):
+    """
     Parameters
     ----------
-    dates: datetime.datetime
-        sorted list of dates
-        
-    Returns
-    -------
-    days: list
-        list of interger days since first date. The first value will be 0.
-        len(days) == len(dates)
+    data: TemporalGrid
+    locations: np.array
+    log: dict like
+        logging dict
+    reset_locations: bool
+        if true reset cells at locations == True to -np.inf before 
+        running interpolation
     """
-    init = dates[0]
-    days = []
-    for date in dates:
-        days.append((date - init).days)
+    ## fix missing cells
+    
+    m_rows, m_cols = np.where(locations == True)   
+   
+    log['Element Messages'].append(
+        'Interpolating missing data pixels using: %s' % func.__name__ 
+    )
+    if log['verbose'] >= 1:
+        print(log['Element Messages'][-1])
+
+    for grid_type in ['fdd', 'tdd', 'roots']:
+        loop_data = data[grid_type]
+
+        if reset_locations:
+            log['Element Messages'].append(
+                "Resetting (to -np.inf) Missing Locations Before Processing..."
+            )
+            if log['verbose'] >= 1:
+                print(log['Element Messages'][-1])
+            loop_data[:, locations] = -np.inf
+
+        len_cells = range(len(m_rows))
+        with Bar('Processing: %s' % grid_type,  max=len_cells) as bar:
+            for cell in len_cells:
+                # f_index = m_rows[cell] * shape[1] + m_cols[cell]  # 'flat' index of
+                # cell location
+                row, col = m_rows[cell], m_cols[cell]
+                kernel = np.array(loop_data[:,row-1:row+2,col-1:col-2])
+                
+                kernel[kernel == -np.inf] = np.nan #clean kernel
+
+                # mean = np.nanmean(kernel.reshape(tdd_grid.shape[0],9),axis = 1)
+                loop_data[:, row, col] = np.nanmean(kernel, axis = 1).mean(1)
+                bar.next()
+            
+    # return cells
+
+
+
+# def create_day_array (dates):
+#     """Calculates number of days after start day for each date in dates array
+    
+#     Parameters
+#     ----------
+#     dates: datetime.datetime
+#         sorted list of dates
         
-    return days
+#     Returns
+#     -------
+#     days: list
+#         list of interger days since first date. The first value will be 0.
+#         len(days) == len(dates)
+#     """
+#     init = dates[0]
+#     days = []
+#     for date in dates:
+#         days.append((date - init).days)
+        
+#     return days
 
-def npmm_to_mg (npmm, rows, cols, ts, cfg={}):
-    """convert a numpy memory map file (npmm) to a Temporal grid (mg)
+# def npmm_to_mg (npmm, rows, cols, ts, cfg={}):
+#     """convert a numpy memory map file (npmm) to a Temporal grid (mg)
 
-    Parameters
-    ----------
-    npmm: np.memmap
-        data
-    rows: int
-    cols: int
-    ts: int
-        number rows, columns, and timsteps in data
-    cfg: dict
-        Multigrid kwargs
+#     Parameters
+#     ----------
+#     npmm: np.memmap
+#         data
+#     rows: int
+#     cols: int
+#     ts: int
+#         number rows, columns, and timsteps in data
+#     cfg: dict
+#         Multigrid kwargs
 
-    Returns
-    -------
-    Multigrid
-    """
-    grid = TemporalGrid(rows, cols, ts)
-    grid.config.update(cfg)
-    grid.grids[:] = npmm.reshape(ts, rows*cols)[:]
-    return grid
+#     Returns
+#     -------
+#     Multigrid
+#     """
+#     grid = TemporalGrid(rows, cols, ts)
+#     grid.config.update(cfg)
+#     grid.grids[:] = npmm.reshape(ts, rows*cols)[:]
+#     return grid
 
 
     

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.0 [2022-06-01]
+### added 
+- new fallback method to use when spline method fails
+- new cli options see readme/cli docs
+- masking features
+
+### changed
+- much of code refactored to support new multigrids features (from multigrids 0.8.0)
+- rewrote cli
+- saving/loading has been rewritten
+
 ## 1.1.1 [2022-02-08]
 ### fixed
 - Bug with multiprocessing Manager()
