@@ -44,7 +44,13 @@ def create_or_load_dataset(
 
 def utility ():
     """Utility for calculating the freezing and thawing degree-days and saving
-    them as tiffs
+    them as tiffs. Uses as spline based method to find roots from monthly 
+    temperature data and calculate fdd and tdd by integration between roots.
+    if roots cannot be calculated a fallback method is used by fixing seasons 
+    for either summer and winter, and integrating positive or negative values 
+    to find tdd and fdd.
+
+
     Flags
     -----
     --in-temperature:  path
@@ -80,9 +86,12 @@ def utility ():
     --mask-val: int 
         Optional, Default None. Nodata value in input tiff data.    
     --mask-comp: 'eq','ne', 'lt', 'gt', 'lte', 'gte'
-        Optional, Default 'eq'. Comparsion for masking bad data 
+        Optional, Default 'eq'. Comparison for masking bad data 
         'eq' uses '==' ,'ne' uses '!=', 'lt' uses '<', 'gt'  uses '>', 
         'lte' uses '<=', 'gte' uses '>='
+    --recalc-mask-file: Path
+        Optional, Defaults None, Path to npy file with a 2d array of 0s and 1s
+        where values of 1 represent pixels to recalculate
     --verbosity: "log", "warn", or not provided
         Optional, Defaults to not provided. 'log' for logging all messages, or 
         'warn' for only warn messages. If not provided most messages are not
@@ -97,6 +106,8 @@ def utility ():
         Optional, Default 0. index to star-at on resuming processing
     --save-temp-monthly: bool
         Optional, Default False. If True save temporary monthly data state
+    --always-fallback: bool
+        Optional, Default False. If True fallback method is always used.
 
     Examples
     --------
@@ -164,7 +175,7 @@ def utility ():
                 {'required': False, 'type': int, 'default': 0 },
             '--save-temp-monthly':
                 {'required': False, 'type': bool, 'default': False },
-            '--alaways-fallback':  {'required': False, 'type': bool, 'default': False },
+            '--always-fallback':  {'required': False, 'type': bool, 'default': False },
             
         }
 
@@ -355,7 +366,7 @@ def utility ():
         num_process = num_processes,
         log=log, 
         logging_dir=logging_dir,
-        use_fallback=arguments['--alaways-fallback'],
+        use_fallback=arguments['--always-fallback'],
         recalc_mask = recalc_mask,
     )
     # calc_grid_degree_days(
