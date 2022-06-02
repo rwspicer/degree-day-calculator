@@ -284,7 +284,7 @@ def calc_grid_degree_days (
 
     n_cells = shape[0] * shape[1]
 
-    with Bar('Calculating Degree-days',  max=n_cells) as bar:
+    with Bar('Calculating Degree-days',  max=n_cells, suffix='%(percent)d%% - %(index)d%% / %(max)d%%') as bar:
         for idx in indices: # flatted area grid index
             row, col = np.unravel_index(idx, shape)
             while len(active_children()) >= num_process:
