@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.1 [2022-06-06]
+### fixed
+- adds additional logic to fallback step to fix bug where default metod fails
+  due to array length mismatch
+
+### changed 
+- progress bar display shows percent as well as current/max now
+
+
 ## 2.0.0 [2022-06-01]
 ### added 
 - new fallback method to use when spline method fails

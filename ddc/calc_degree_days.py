@@ -70,7 +70,7 @@ def calc_degree_days_for_cell (
     expected_roots = 2 * tdd.config['num_timesteps']
     # print('->>', expected_roots, use_fallback)
     row, col = index
-    
+    # print('\n->', expected_roots)
     days = monthly_temps.convert_timesteps_to_julian_days()
     temps = monthly_temps[:, row, col]
     spline = interpolate.UnivariateSpline(days, temps)
@@ -89,7 +89,7 @@ def calc_degree_days_for_cell (
                 break
 
     # print('->>', expected_roots,len(spline.roots()), use_fallback)
-
+    fallback = False
     if len(spline.roots()) == expected_roots and not use_fallback: 
         # print('default')
         for rdx in range(len(spline.roots())-1):
@@ -106,8 +106,26 @@ def calc_degree_days_for_cell (
         roots_temp.append(spline.roots()[-1]  * roots_temp[-1]/abs(roots_temp[-1]) * -1) 
 
         method_map[row, col] = 1
-        
+
+        if len(fdd_temp) != tdd.config['num_timesteps'] or \
+           len(tdd_temp) != tdd.config['num_timesteps']:
+            # print(
+            #     'fallback b'
+            # )
+            fallback = True
+            method_map[row, col] = 3
+            tdd_temp = []
+            fdd_temp = []
+            roots_temp = []
     else:
+        fallback = True
+        # print('fallback a')
+        method_map[row, col] = 2
+        # print('fdd len', len(fdd_temp))
+        # print('tdd len', len(tdd_temp))
+        # print('roots len', len(roots_temp))
+        
+    if fallback:
         # default = False
         # print('fallback')
         start= list(monthly_temps.config['grid_name_map'].keys())[0]
@@ -159,7 +177,7 @@ def calc_degree_days_for_cell (
             fdd_val = sum([v for v in fdd_val if v < 0])
             fdd_temp.append(fdd_val)
             tdd_temp.append(tdd_val)
-            method_map[row, col] = 2
+            
 
     # print (tdd)
     
@@ -256,12 +274,18 @@ def calc_grid_degree_days (
 
     shape=monthly_temps.config['grid_shape']
     
-    temp = mkdtemp()
+    # temp = './
+    mm = os.path.join(logging_dir,'ddc-temp-methodmap.data')
+    mode = 'w+'
+    if os.path.exists(mm):
+        mode = 'r+'
+    print('mode', mode) 
     method_map = np.memmap(
-        os.path.join(temp,'methodmap.data'), shape=shape,
-        dtype = float, mode='w+',
+        mm, shape=shape,
+        dtype = float, mode=mode,
     )
-    method_map[:] = np.nan
+    if mode == 'w+':
+        method_map[:] = np.nan
     
 
     print('Calculating valid indices!')
@@ -284,7 +308,7 @@ def calc_grid_degree_days (
 
     n_cells = shape[0] * shape[1]
 
-    with Bar('Calculating Degree-days',  max=n_cells) as bar:
+    with Bar('Calculating Degree-days',  max=n_cells, suffix='%(percent)d%% - %(index)d / %(max)d') as bar:
         for idx in indices: # flatted area grid index
             row, col = np.unravel_index(idx, shape)
             while len(active_children()) >= num_process:
