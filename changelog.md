@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.2 [2022-06-14]
+### fixed
+- bug causing crash if logging dir did not exist
+- bug where ,ultigrid was used insted of temporalgrid when loading 
+  from monthly data tiff files  
+
 ## 2.0.1 [2022-06-06]
 ### fixed
 - adds additional logic to fallback step to fix bug where default metod fails
