@@ -1,14 +1,20 @@
 # Changelog
 
+## 2.1.0 [2022-08-09]
+### fixed
+- major bug in calc_degreee_days.calc_degree_days_for_cell were if a smoothing 
+factor was needed to be set on spline curve the loop for iterating to find the 
+factor to used always exited after one iteration
+
 ## 2.0.2 [2022-06-14]
 ### fixed
 - bug causing crash if logging dir did not exist
-- bug where ,ultigrid was used insted of temporalgrid when loading 
+- bug where Multigrid was used instead of TemporalGrid when loading 
   from monthly data tiff files  
 
 ## 2.0.1 [2022-06-06]
 ### fixed
-- adds additional logic to fallback step to fix bug where default metod fails
+- adds additional logic to fallback step to fix bug where default method fails
   due to array length mismatch
 
 ### changed 

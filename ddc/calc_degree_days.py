@@ -197,7 +197,9 @@ def calc_degree_days_for_cell (
 
     ## NOTE: the last fdd values is either set to a dummy val or only 
     ## partial fdd so use second to last value
-    fdd_temp = fdd_temp[:-1] + [fdd_temp[-2]] 
+    fdd_temp = fdd_temp + [fdd_temp[-1]]
+    # fdd_temp = fdd_temp[:-1] + [fdd_temp[-2]] 
+
     fdd[:,row, col] = np.array( fdd_temp )
                                         # I.E. if last year of data is 2015, the 
                                         # fdd for 2015 is set to fdd for 2014
