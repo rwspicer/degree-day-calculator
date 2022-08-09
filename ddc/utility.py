@@ -5,7 +5,9 @@ CLI utility for calculating degree-days from monthly data
 """
 import glob
 import os, sys
+
 from datetime import datetime
+from dateutil.relativedelta import relativedelta
 
 import numpy as np
 
@@ -264,7 +266,9 @@ def utility ():
             }
         create_params = {
             "name": "monthly temperatures",
-            "grid_names": temporal_grid_keys
+            "grid_names": temporal_grid_keys,
+            "start_timestep": datetime(arguments['--start-year'],1,1),
+            "delta_timestep": relativedelta(months=1)
             
         }
 
@@ -348,6 +352,11 @@ def utility ():
         {'Element Messages': manager.list() , 'Spline Errors': manager.list()}
     )
     log['verbose'] = verbosity
+
+    try:
+        os.makedirs(logging_dir)
+    except:
+        pass
 
     print('starting')
     # print(fdd.grids.filename)

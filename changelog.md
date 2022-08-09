@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.0.2 [2022-06-14]
+### fixed
+- bug causing crash if logging dir did not exist
+- bug where ,ultigrid was used insted of temporalgrid when loading 
+  from monthly data tiff files  
+
+## 2.0.1 [2022-06-06]
+### fixed
+- adds additional logic to fallback step to fix bug where default metod fails
+  due to array length mismatch
+
+### changed 
+- progress bar display shows percent as well as current/max now
+
+
 ## 2.0.0 [2022-06-01]
 ### added 
 - new fallback method to use when spline method fails
@@ -10,6 +25,9 @@
 - much of code refactored to support new multigrids features (from multigrids 0.8.0)
 - rewrote cli
 - saving/loading has been rewritten
+
+### removed
+-- local copy of multigrids
 
 ## 1.1.1 [2022-02-08]
 ### fixed
