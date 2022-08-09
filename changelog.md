@@ -1,10 +1,14 @@
 # Changelog
 
 ## 2.1.0 [2022-08-09]
+### added
+- resluting multigrid files have utilty vesion written to metadata
+
 ### fixed
 - major bug in calc_degreee_days.calc_degree_days_for_cell were if a smoothing 
 factor was needed to be set on spline curve the loop for iterating to find the 
 factor to used always exited after one iteration
+
 
 ## 2.0.2 [2022-06-14]
 ### fixed

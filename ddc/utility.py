@@ -15,6 +15,7 @@ from calc_degree_days import calc_grid_degree_days#, create_day_array
 from multigrids.tools import load_and_create, get_raster_metadata
 from multigrids import TemporalGrid
 from spicebox import CLILib
+from __init__ import __version__
 
 from multiprocessing import Manager, Lock
 
@@ -28,6 +29,8 @@ def create_or_load_dataset(
     if  os.path.isfile(data_path):
         
         grids = TemporalGrid(data_path)
+        grids.config['degree-day-calculator-version'] = __version__
+        grids.save(data_path)
     else:
         grids = TemporalGrid(
             grid_shape[0], grid_shape[1], num_years, 
@@ -37,6 +40,7 @@ def create_or_load_dataset(
         )
         grids.config['raster_metadata'] = raster_metadata
         grids.config['dataset_name'] = name
+        grids.config['degree-day-calculator-version'] = __version__
         grids.save(data_path)
         grids = TemporalGrid(data_path)
         for ts in grids.timestep_range():

@@ -188,21 +188,20 @@ def calc_degree_days_for_cell (
     
     tdd[:, row, col] = np.array(tdd_temp)
     
+    # The last winter cannont be caclulated to the full extent(no end of the 
+    # curve because no data). The code above handles this by setting a dummy 
+    # variable of +8000 for the splien method or only using 'half' the 
+    # winters data for the fallback method. So for the last year (ly) and 
+    # fdd[ly] we use the the same values as fdd[ly-1]. For example the fdd 
+    # for 2015 would be equal to the fd for 2014 if 2015 was the last year.
+    # This is done by taking a list of all of the values except 
+    # the dummy or patital value for fdd[ly] (this is fdd_temp[:1] below), 
+    # and adding the last good value fdd[ly-1]( which is fdd_temp[-2]).  
+    fdd_temp = fdd_temp[:-1] + [fdd_temp[-2]] 
 
-
-    ## FDD array is not long enough (len(tdd) - 1) on its own, so we use the 
-    # first winter value twice this works because the the spline curves are
-    # created will always have a first root going from negative to positistve
-    # This works for northern alaska and should not be assumed else where.\
-
-    ## NOTE: the last fdd values is either set to a dummy val or only 
-    ## partial fdd so use second to last value
-    fdd_temp = fdd_temp + [fdd_temp[-1]]
-    # fdd_temp = fdd_temp[:-1] + [fdd_temp[-2]] 
 
     fdd[:,row, col] = np.array( fdd_temp )
-                                        # I.E. if last year of data is 2015, the 
-                                        # fdd for 2015 is set to fdd for 2014
+                                        
     roots[:,row, col] = np.array(roots_temp)
     
     # except ValueError as e:
