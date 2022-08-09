@@ -85,7 +85,8 @@ def calc_degree_days_for_cell (
             
             spline.set_smoothing_factor(sf)
             # print('->>', expected_roots,len(spline.roots()), use_fallback)
-            if len(spline.roots()==expected_roots):
+            len_roots = len(spline.roots())  ## make really explicit to avoid bugs
+            if len_roots == expected_roots:
                 break
 
     # print('->>', expected_roots,len(spline.roots()), use_fallback)
