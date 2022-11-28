@@ -80,6 +80,7 @@ def calc_degree_days_for_cell (
     fdd_temp = []
     roots_temp = []
 
+    
     if len(spline.roots()) != expected_roots:
         for sf in range(1,51):
             
@@ -402,7 +403,8 @@ def log(logging_dir, data):
     )        
 
 def fill_missing_by_interpolation(
-        data, locations, log, func=np.nanmean, reset_locations = False
+        data, locations, log, func=np.nanmean, reset_locations = False,
+        loc_type = 'map'
     ):
     """
     Parameters
@@ -416,8 +418,10 @@ def fill_missing_by_interpolation(
         running interpolation
     """
     ## fix missing cells
-    
-    m_rows, m_cols = np.where(locations == True)   
+    if loc_type == 'list': # list of tuple locations or set
+        m_rows, m_cols  = np.array(list(locations)).T
+    else: # loctype == map
+        m_rows, m_cols = np.where(locations == True)   
    
     log['Element Messages'].append(
         'Interpolating missing data pixels using: %s' % func.__name__ 
@@ -425,30 +429,37 @@ def fill_missing_by_interpolation(
     if log['verbose'] >= 1:
         print(log['Element Messages'][-1])
 
-    for grid_type in ['fdd', 'tdd', 'roots']:
-        loop_data = data[grid_type]
+    # for grid_type in ['fdd', 'tdd', 'roots']:
+    #     loop_data = data[grid_type]
 
-        if reset_locations:
-            log['Element Messages'].append(
-                "Resetting (to -np.inf) Missing Locations Before Processing..."
-            )
-            if log['verbose'] >= 1:
-                print(log['Element Messages'][-1])
-            loop_data[:, locations] = -np.inf
+    len_cells = range(len(m_rows))
+    loop_data = data
+    if reset_locations:
+        log['Element Messages'].append(
+            "Resetting (to -np.inf) Missing Locations Before Processing..."
+        )
+        if log['verbose'] >= 1:
+            print(log['Element Messages'][-1])
 
-        len_cells = range(len(m_rows))
-        with Bar('Processing: %s' % grid_type,  max=len_cells) as bar:
-            for cell in len_cells:
-                # f_index = m_rows[cell] * shape[1] + m_cols[cell]  # 'flat' index of
-                # cell location
-                row, col = m_rows[cell], m_cols[cell]
-                kernel = np.array(loop_data[:,row-1:row+2,col-1:col-2])
-                
-                kernel[kernel == -np.inf] = np.nan #clean kernel
+        for cell in len_cells:
+            row, col = m_rows[cell], m_cols[cell]
+            for year in loop_data.timestep_range():
+                ix = year - loop_data.config['start_timestep']
+                loop_data.grids[ix].reshape(loop_data.config['grid_shape'])[row, col] = -np.inf
 
-                # mean = np.nanmean(kernel.reshape(tdd_grid.shape[0],9),axis = 1)
-                loop_data[:, row, col] = np.nanmean(kernel, axis = 1).mean(1)
-                bar.next()
+    print('processing')
+    with Bar('Processing: %s' % 'grid_type',  max=len(len_cells)) as bar:
+        for cell in len_cells:
+            # f_index = m_rows[cell] * shape[1] + m_cols[cell]  # 'flat' index of
+            # cell location
+            row, col = m_rows[cell], m_cols[cell]
+            kernel = np.array(loop_data[:,row-1:row+2,col-1:col+2])
+            
+            kernel[np.isinf(kernel)] = np.nan #clean kernel
+
+            # mean = np.nanmean(kernel.reshape(tdd_grid.shape[0],9),axis = 1)
+            loop_data[:, row, col] = np.nanmean(kernel, axis = 1).mean(1)
+            bar.next()
             
     # return cells
 

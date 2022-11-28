@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.0 [2022-11-28]
+### changed
+- fill_missing_by_interpolation has been rewritten, with loc_type option added
+
+
 ## 2.1.0 [2022-08-09]
 ### added
 - resluting multigrid files have utilty vesion written to metadata
