@@ -21,6 +21,8 @@ from multiprocessing import Manager, Lock
 
 from sort import sort_snap_files
 
+import fill
+
 def create_or_load_dataset(
         data_path, grid_shape, num_years, start_year, name, raster_metadata
     ):
@@ -134,7 +136,7 @@ def utility ():
     try:
         flags = {
             '--in-temperature': 
-                {'required': True, 'type': str}, 
+                {'required': False, 'type': str, 'default': ''}, 
             '--out-directory':  
                 {
                     'required': False, 
@@ -182,6 +184,24 @@ def utility ():
             '--save-temp-monthly':
                 {'required': False, 'type': bool, 'default': False },
             '--always-fallback':  {'required': False, 'type': bool, 'default': False },
+            '--fill-holes': {'required': False, 'type': bool, 'default': False },
+            '--valid-area': {
+                'required': False, 'type': str, 'default': '',   
+            },
+            '--area-type': {
+                'required': False, 'type': str, 
+                'default': 'aoi',  
+                'accepted-values': ['aoi', 'exact'] 
+            },
+            '--hole-fill-method' : {
+                'required': False, 'type': str, 
+                'default': 'by-interpolation',  
+                'accepted-values': ['by-interpolation'] 
+            },
+            '--reset-bad-cells' : {
+                'required': False, 'type': bool, 'default': True
+            },
+            '--kernel-size' :{'required': False, 'type': int, 'default': 1},
             
         }
 
@@ -195,6 +215,38 @@ def utility ():
     # sys.exit(0)
 
     verbosity = {'log':2, 'warn':1, '':0}[arguments['--verbose']]
+
+    if arguments['--fill-holes']:
+        if not os.path.exists(os.path.join(out_fdd, 'fdd.yml')) and \
+                not os.path.exists(os.path.join(out_tdd, 'tdd.yml')):
+            print('Degree-day data missing/')
+            sys.exit()
+        fdd = create_or_load_dataset(
+            os.path.join(out_fdd, 'fdd.yml'), 
+            grid_shape, 
+            num_years, 
+            start_year, 
+            'freezing degree-day', 
+            raster_metadata
+        )
+
+        tdd = create_or_load_dataset(
+            os.path.join(out_tdd, 'tdd.yml'), 
+            grid_shape, 
+            num_years, 
+            start_year, 
+            'thawing degree-day', 
+            raster_metadata
+        )
+        fill.sub_utility(fdd, tdd, arguments, log = {})
+
+        if arguments['--out-format'] in ['tiff', 'both']:
+            tdd.save_all_as_geotiff(out_tdd)
+            fdd.save_all_as_geotiff(out_fdd)
+            
+            
+        sys.exit()
+
     
     sort_method = "Using default sort function"
     sort_fn = sorted

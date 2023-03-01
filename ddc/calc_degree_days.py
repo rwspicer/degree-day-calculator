@@ -24,10 +24,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import interpolate
 
-try:
-    from multigrids import temporal_grid
-except ImportError:
-    from .multigrids import temporal_grid
+from multigrids import temporal_grid
 TemporalGrid = temporal_grid.TemporalGrid
 
 ROW, COL = 0, 1
@@ -402,66 +399,8 @@ def log(logging_dir, data):
         os.path.join(logging_dir, "temp-tdd-pre-cleanup.data")
     )        
 
-def fill_missing_by_interpolation(
-        data, locations, log, func=np.nanmean, reset_locations = False,
-        loc_type = 'map'
-    ):
-    """
-    Parameters
-    ----------
-    data: TemporalGrid
-    locations: np.array
-    log: dict like
-        logging dict
-    reset_locations: bool
-        if true reset cells at locations == True to -np.inf before 
-        running interpolation
-    """
-    ## fix missing cells
-    if loc_type == 'list': # list of tuple locations or set
-        m_rows, m_cols  = np.array(list(locations)).T
-    else: # loctype == map
-        m_rows, m_cols = np.where(locations == True)   
-   
-    log['Element Messages'].append(
-        'Interpolating missing data pixels using: %s' % func.__name__ 
-    )
-    if log['verbose'] >= 1:
-        print(log['Element Messages'][-1])
-
-    # for grid_type in ['fdd', 'tdd', 'roots']:
-    #     loop_data = data[grid_type]
-
-    len_cells = range(len(m_rows))
-    loop_data = data
-    if reset_locations:
-        log['Element Messages'].append(
-            "Resetting (to -np.inf) Missing Locations Before Processing..."
-        )
-        if log['verbose'] >= 1:
-            print(log['Element Messages'][-1])
-
-        for cell in len_cells:
-            row, col = m_rows[cell], m_cols[cell]
-            for year in loop_data.timestep_range():
-                ix = year - loop_data.config['start_timestep']
-                loop_data.grids[ix].reshape(loop_data.config['grid_shape'])[row, col] = -np.inf
-
-    print('processing')
-    with Bar('Processing: %s' % 'grid_type',  max=len(len_cells)) as bar:
-        for cell in len_cells:
-            # f_index = m_rows[cell] * shape[1] + m_cols[cell]  # 'flat' index of
-            # cell location
-            row, col = m_rows[cell], m_cols[cell]
-            kernel = np.array(loop_data[:,row-1:row+2,col-1:col+2])
             
-            kernel[np.isinf(kernel)] = np.nan #clean kernel
 
-            # mean = np.nanmean(kernel.reshape(tdd_grid.shape[0],9),axis = 1)
-            loop_data[:, row, col] = np.nanmean(kernel, axis = 1).mean(1)
-            bar.next()
-            
-    # return cells
 
 
 
