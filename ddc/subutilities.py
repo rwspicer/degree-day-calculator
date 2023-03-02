@@ -266,3 +266,140 @@ def load_datasets(paths, arguments):
         data['roots'].config['delta_timestep'] = "varies"
 
     return data
+
+def fill_holes(fdd, tdd, arguments, log = {}):
+    """Calculates cells to interpolate and runs fdd and tdd datasets through 
+    correction process. 
+
+    Parameters
+    ----------
+    fdd:
+    tdd:
+    arguments: dict 
+        contains
+        --valid-area: path
+            path to raster containing integer mask of either aoi, or locations 
+            to fix. if mask is not integer data. Nan values are set to 0 and
+            others to 1. In other cases all values > 0 are to 1 as well
+        --area-type: String
+            'exact' if valid area is a precalculated mask with values of 1 were
+            interpolation should occurs and 0 otherwise.
+            'aoi': valid_area is a mask of the valid aoi, with this argument,
+            valid_area and missing data in the first timestep in fdd are used to 
+            calculate cells to fix. 
+        --hole-fill-method: function to use
+            by-interpolation is the only current option uses mean of cells in
+            kernel to fill missing value
+        --reset-bad-cells: bool
+            if true cells are set to np.nan before corrections are applied
+        --kernel-size: int, 1
+            size of kernel to use in correction process 
+
+    """
+    method = fill.METHODS[arguments['--hole-fill-method']]
+
+    
+    locations = raster.load_raster(arguments['--valid-area'])[0]
+
+    locations[np.isnan(locations)] = 0
+    locations[ locations>1 ]  = 1
+    locations = locations.astype(int)
+    if arguments['--area-type'] == 'aoi':
+        sample = fdd[fdd.config['start_timestep']]
+        
+        locations = np.logical_and(locations, np.isnan(sample))
+
+
+
+
+    print("Filling Holes in FDD data")
+    method(
+        fdd, locations, log, 
+        func=np.nanmean, 
+        reset_locations = arguments['--reset-bad-cells'],
+        loc_type = 'map', 
+        k_size = arguments['--kernel-size']
+    )
+    print("Filling Holes in TDD data")
+    method(
+        tdd, locations, log, 
+        func=np.nanmean, 
+        reset_locations = arguments['--reset-bad-cells'],
+        loc_type = 'map', 
+        k_size = arguments['--kernel-size']
+    )
+
+
+def main_utility(data, paths, arguments, log = {}):
+    """"""
+    print('starting')
+
+    recalc_mask = None
+    if not arguments['--recalc-mask-file'] is None:
+        recalc_mask = np.load(arguments['--recalc-mask-file']).astype(int) == 1
+
+    calc_grid_degree_days (
+        data,
+        start = int(arguments['--start-at']) if arguments['--start-at'] else 0, 
+        num_process = int(arguments['--num-processes']),
+        log=log, 
+        logging_dir=paths['logging'],
+        use_fallback=arguments['--always-fallback'],
+        recalc_mask = recalc_mask,
+    )
+
+    for item in log["Spline Errors"]:
+        words = item.split(' ')
+        location = int(words[-1])
+        print ( grid_shape)
+        row, col = np.unravel_index(location, grid_shape)  
+
+        msg = ' '.join(words[:-1])
+        msg += ' at row:' + str(row) + ', col:' + str(col) + '.'
+        print(msg)
+
+def write_results(data, paths, arguments, log):
+
+    if arguments['--out-format'] in ['tiff', 'both']:
+        data['tdd'].save_all_as_geotiff(paths['tdd'])
+        data['fdd'].save_all_as_geotiff(paths['fdd'])
+        if paths['roots'] != './temp-roots' and not arguments['--fill-holes']:: 
+            data['roots'].save_all_as_geotiff(paths['roots'])
+    
+    if arguments['--out-format'] == 'tiff':
+        os.remove(os.path.join(paths['tdd'], 'tdd.yml'))
+        filename = data['tdd'].grids.filename
+        os.remove(data['tdd'].filter_file) if data['tdd'].filter_file else None
+        os.remove(data['tdd'].mask_file) if data['tdd'].mask_file else None
+        del(data['tdd'])
+        os.remove(filename)
+
+        os.remove(os.path.join(paths['fdd'], 'fdd.yml'))
+        filename = data['fdd'].grids.filename
+        os.remove(data['fdd'].filter_file) if data['fdd'].filter_file else None
+        os.remove(data['fdd'].mask_file) if data['fdd'].mask_file else None
+        del(data['fdd'])
+        os.remove(filename)
+
+        if not arguments['--fill-holes']:
+            os.remove(os.path.join(paths['roots'], 'roots.yml'))
+            filename = data['roots'].grids.filename
+            os.remove(data['roots'].filter_file) if data['roots'].filter_file else None
+            os.remove(data['roots'].mask_file) if data['roots'].mask_file else None
+            del(data['roots'])
+            # print(filename)
+            os.remove(filename)
+        
+        
+
+    if arguments['--out-format'] in ['multigrid','both']:
+        data['fdd'].config['command-used-to-create'] = ' '.join(sys.argv)
+        data['tdd'].config['command-used-to-create'] = ' '.join(sys.argv)
+        # print(os.path.join(paths['fdd'], 'fdd.yml'))
+        data['fdd'].save(os.path.join(paths['fdd'], 'fdd.yml'))
+        data['tdd'].save(os.path.join(paths['tdd'], 'tdd.yml'))
+        if not arguments['--fill-holes']:
+            data['roots'].config['command-used-to-create'] = ' '.join(sys.argv)
+            data['roots'].save(os.path.join(out_roots, 'roots.yml'))
+
+    

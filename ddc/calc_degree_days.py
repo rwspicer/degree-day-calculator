@@ -261,7 +261,7 @@ def calc_grid_degree_days (
     cells
         indexes of interpolated locations
     """
-    monthly_temps = data['monthly-temperature']
+    monthly_temps = data['temperature']
     tdd = data['tdd']
     fdd = data['fdd']
     roots = data['roots']
