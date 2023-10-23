@@ -4,9 +4,7 @@ Calc Degree Days
 
 Tools for calculating and storing spatial degree days values from temperature
 """
-from cmath import exp
 import os
-from re import I
 import shutil
 import gc
 import warnings
@@ -127,7 +125,7 @@ def calc_degree_days_for_cell (
     if fallback:
         # default = False
         # print('fallback')
-        start= list(monthly_temps.config['grid_name_map'].keys())[0]
+        start = list(monthly_temps.config['grid_name_map'].keys())[0]
 
         start_year = list(monthly_temps.config['grid_name_map'].keys())[0].year
         end_year = list(monthly_temps.config['grid_name_map'].keys())[-1].year + 1
@@ -261,7 +259,7 @@ def calc_grid_degree_days (
     cells
         indexes of interpolated locations
     """
-    monthly_temps = data['temperature']
+    monthly_temps = data['monthly-temperature']
     tdd = data['tdd']
     fdd = data['fdd']
     roots = data['roots']

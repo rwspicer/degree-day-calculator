@@ -37,7 +37,11 @@ def by_interpolation(
         m_rows, m_cols  = np.array(list(locations)).T
     else: # loctype == map
         m_rows, m_cols = np.where(locations == True)   
-   
+    # print(m_rows, m_cols)
+    if len(m_rows) == 0:
+        if log['verbose'] >= 1:
+            print('no elemets to correct.')
+        return 
     log['Element Messages'].append(
         'Interpolating missing data pixels using: %s' % func.__name__ 
     )
@@ -79,7 +83,7 @@ def by_interpolation(
             kernel[np.isinf(kernel)] = np.nan #clean kernel
 
             # mean = np.nanmean(kernel.reshape(tdd_grid.shape[0],9),axis = 1)
-            loop_data[:, row, col] = np.nanmean(kernel, axis = 1).mean(1)
+            loop_data[:, row, col] = np.nanmean(np.nanmean(kernel, axis = 1), axis = 1)
             bar.next()
 
 

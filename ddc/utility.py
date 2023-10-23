@@ -38,7 +38,8 @@ def create_or_load_dataset(
             grid_shape[0], grid_shape[1], num_years, 
             start_timestep=start_year,
             # dataset_name = 'fdd',
-            mode='w+'
+            mode='w+',
+            save_to=data_path, 
         )
         grids.config['raster_metadata'] = raster_metadata
         grids.config['dataset_name'] = name
