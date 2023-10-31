@@ -17,7 +17,7 @@ from multigrids import TemporalGrid
 from spicebox import CLILib
 from __init__ import __version__
 
-from multiprocessing import Manager, Lock
+from multiprocessing import Manager, Lock, Process
 
 from sort import sort_snap_files
 
@@ -50,6 +50,20 @@ def create_or_load_dataset(
             # print(ts)
             grids[ts] = np.nan
     return grids
+
+def write_results_worker(tdd, fdd, roots, temp_dir):
+    while True:
+        try:
+            _file = glob.glob(os.path.join(temp_dir,'*.npz'))[0]
+            data = np.load(_file)
+        except:
+            continue
+        row, col = [int(d) for d in os.path.split(_file)[1].split('.')[:2]]
+        tdd[:,row,col] = data['tdd']
+        fdd[:,row,col] = data['fdd']
+        roots[:,row,col] = data['roots']
+        del(data)
+        os.remove(_file)
 
 def utility ():
     """Utility for calculating the freezing and thawing degree-days and saving
@@ -415,6 +429,14 @@ def utility ():
     except:
         pass
 
+
+    temp_dir = 'temp_dd_arrays'
+    os.makedirs(temp_dir)
+    writer = Process(
+        target=write_results_worker, 
+        args=(tdd, fdd, roots, temp_dir))
+    writer.start()
+
     print('starting')
     # print(fdd.grids.filename)
     # print(tdd.grids.filename)
@@ -434,6 +456,7 @@ def utility ():
         logging_dir=logging_dir,
         use_fallback=arguments['--always-fallback'],
         recalc_mask = recalc_mask,
+        temp_dir = temp_dir
     )
     # calc_grid_degree_days(
     #         days, 
@@ -447,6 +470,17 @@ def utility ():
     #         roots_grid=roots.grids,
     #         logging_dir = logging_dir
     #     )
+
+
+    print('Waiting for results to be written')
+    while(len(glob.glob(os.path.join(temp_dir, '*.npz'))) != 0):
+        continue
+
+    writer.kill()
+    try:
+        os.remove(temp_dir)
+    except:
+        pass
 
     for item in log["Spline Errors"]:
         words = item.split(' ')

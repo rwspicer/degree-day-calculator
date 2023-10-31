@@ -37,7 +37,7 @@ set_start_method('fork')
 
 def calc_degree_days_for_cell (
         index, monthly_temps, tdd, fdd, roots, method_map, lock = Lock(),
-        log={'verbose':0}, use_fallback = False
+        log={'verbose':0}, use_fallback = False, temp_dir='temp_dd_arrays'
         ):
     """Caclulate degree days (thawing, and freezing) and store in to 
     a grid.
@@ -182,7 +182,7 @@ def calc_degree_days_for_cell (
     # fdd = np.array(len(fdd))
     lock.acquire()
     
-    tdd[:, row, col] = np.array(tdd_temp)
+    # tdd[:, row, col] = np.array(tdd_temp)
     
     # The last winter cannont be caclulated to the full extent(no end of the 
     # curve because no data). The code above handles this by setting a dummy 
@@ -196,9 +196,17 @@ def calc_degree_days_for_cell (
     fdd_temp = fdd_temp[:-1] + [fdd_temp[-2]] 
 
 
-    fdd[:,row, col] = np.array( fdd_temp )
+    # fdd[:,row, col] = np.array( fdd_temp )
                                         
-    roots[:,row, col] = np.array(roots_temp)
+    # roots[:,row, col] = np.array(roots_temp)
+
+    _tfile = '%i.%i.npz' % (row,col)
+    np.savez(
+        os.path.join(temp_dir, _tfile),
+        fdd = np.array(fdd_temp),
+        tdd = np.array(tdd_temp),
+        roots = np.array(roots_temp),
+    )
     
     # except ValueError as e:
     #     pass # not sure why this is here but it looks good
@@ -213,6 +221,7 @@ def calc_grid_degree_days (
         logging_dir=None,
         use_fallback=False,
         recalc_mask = None,
+        temp_dir = None,
     ):
     """Calculate degree days (Thawing, and Freezing) for an area. 
     
@@ -335,7 +344,7 @@ def calc_grid_degree_days (
             if num_process == 1:
                 calc_degree_days_for_cell(
                     index, monthly_temps, tdd, fdd, roots,  
-                    method_map, w_lock, log, use_fallback
+                    method_map, w_lock, log, use_fallback, temp_dir
                 )
             else:
                 Process(
@@ -343,7 +352,7 @@ def calc_grid_degree_days (
                     name = "calc degree day at elem " + str(idx),
                     args = (
                         index, monthly_temps, tdd, fdd, roots,  
-                        method_map, w_lock, log,  use_fallback,
+                        method_map, w_lock, log,  use_fallback, temp_dir
                     )
                 ).start()
             bar.index = idx-1
