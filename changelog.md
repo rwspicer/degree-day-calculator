@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.0 [2022-11-28]
+### changed
+- refactored utility code
+- refactored other code as needed
+- modified calc_cell coded to supported new save worker
+- filling of holes re-implemented
+
+### added
+- worker to save degree day and root data out side of calculation process.
+
 ## 2.2.0 [2022-11-28]
 ### changed
 - fill_missing_by_interpolation has been rewritten, with loc_type option added
