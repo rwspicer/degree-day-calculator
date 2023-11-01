@@ -7,9 +7,6 @@ in datasets.
 """
 import numpy as np
 from progress.bar import Bar
-from spicebox import raster
-
-
 
 
 def by_interpolation(

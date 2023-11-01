@@ -1,3 +1,7 @@
+"""
+Subutilities and processes
+--------------------------
+"""
 import glob
 import os, sys
 
@@ -9,137 +13,88 @@ import numpy as np
 from calc_degree_days import calc_grid_degree_days#, create_day_array
 from multigrids.tools import load_and_create, get_raster_metadata
 from multigrids import TemporalGrid
-from spicebox import CLILib
 from __init__ import __version__
 
-from multiprocessing import Manager, Lock
+from multiprocessing import Manager, Lock, Process
+
 
 from sort import sort_snap_files
 
 import fill
 
+from spicebox import raster
 
-def update_arguments (arguments):
 
-    if arguments['--in-temperature'] is None and \
-            arguments['--temperature-data'] is None and \
-            arguments['--fill-holes']:
-        print("Either '--in-temperature' or '--temperature-data' must be set")
-        print("when '--fill-holse is False")
-        sys.exit()
-    elif arguments['--in-temperature'] and \
-            arguments['--temperature-data'] is None:
-        ##old alais is used
-        arguments.args['--temperature-data'] = arguments['--in-temperature']
-    elif arguments['--in-temperature'] and arguments['--temperature-data']:
-        print("set either '--in-temperature' or '--temperature-data' not both")
-        sys.exit()
 
-    if arguments['--out-directory'] is None:
-        if arguments['--out-fdd'] is None and \
-                arguments['--fdd-data'] is None:
-            print("Either '--out-fdd' or '--fdd-data' must be set")
-            sys.exit()
-        elif arguments['--out-fdd'] and \
-                arguments['--fdd-data'] is None:
-            ##old alais is used
-            arguments.args['--fdd-data'] = arguments['--out-fdd']
-        elif arguments['--out-fdd'] and arguments['--fdd-data']:
-            print("set either '--out-fdd' or '--fdd-data' not both")
-            sys.exit()
+def start_write_results_worker(arguments, config, data):
+
+    tdd = data['tdd'] 
+    fdd = data['fdd']
+    roots = data['roots'],
+    temp_dir = config['temp_results_dir']
+    sm_name = config['sm_name']
+    writer = Process(
+        target=write_results_loop, 
+        args=(tdd, fdd, roots, temp_dir, sm_name))
+    writer.start()
+    return writer
+
+def setup_directories(arguments, config, data):
+
+    config['directories']['fdd'] = arguments['--out-fdd']
+    config['directories']['tdd'] = arguments['--out-tdd']
+    config['directories']['roots']  = arguments['--out-roots']
+    config['directories']['logs'] = arguments['--logging-dir']
+ 
+    for name, out_dir in config['directories'].items():
+        if out_dir:
+            try: 
+                os.makedirs(out_dir)
+            except:
+                pass
+
+def fill_holes(arguments, config, data):
+    if config['fdd_new'] or config['tdd_new']:
+        print('Degree-day data missing/')
+        raise IOError('Degree-day data missing for filling holes')
+    method = fill.by_interpolation
+    locations = raster.load_raster(arguments['--valid-area'])[0]
+
+    locations[np.isnan(locations)] = 0
+    locations[ locations>1 ]  = 1
+    locations = locations.astype(int)
+    if arguments['--area-type'] == 'aoi':
+        sample = data['fdd'][data['fdd'].config['start_timestep']]
         
-        if arguments['--out-tdd'] is None and \
-                arguments['--tdd-data'] is None:
-            print("Either '--out-tdd' or '--tdd-data' must be set")
-            sys.exit()
-        elif arguments['--out-tdd'] and \
-                arguments['--tdd-data'] is None:
-            ##old alais is used
-            arguments.args['--tdd-data'] = arguments['--out-tdd']
-        elif arguments['--out-tdd'] and arguments['--tdd-data']:
-            print("set either '--out-tdd' or '--tdd-data' not both")
-            sys.exit()
-
-    # print(arguments)
+        locations = np.logical_and(locations, np.isnan(sample))
 
 
+    print("Filling Holes in FDD data")
+    method(
+        data['fdd'], locations, config['log'], 
+        func=np.nanmean, 
+        reset_locations = arguments['--reset-bad-cells'],
+        loc_type = 'map', 
+        k_size = arguments['--kernel-size']
+    )
+    print("Filling Holes in TDD data")
+    method(
+        data['tdd'], locations, config['log'], 
+        func=np.nanmean, 
+        reset_locations = arguments['--reset-bad-cells'],
+        loc_type = 'map', 
+        k_size = arguments['--kernel-size']
+    )
 
-def create_or_load_dataset(
-        data_path, grid_shape, num_years, start_year, name, raster_metadata,
-        do_not_create = False
-    ):
-    """create or load an existing dataset
-    """
-    if  os.path.isfile(data_path):
-        
-        grids = TemporalGrid(data_path)
-        grids.config['degree-day-calculator-version'] = __version__
-        grids.save(data_path)
-    elif not do_not_create:
-        grids = TemporalGrid(
-            grid_shape[0], grid_shape[1], num_years, 
-            start_timestep=start_year,
-            # dataset_name = 'fdd',
-            mode='w+'
-        )
-        grids.config['raster_metadata'] = raster_metadata
-        grids.config['dataset_name'] = name
-        grids.config['degree-day-calculator-version'] = __version__
-        grids.save(data_path)
-        grids = TemporalGrid(data_path)
-        for ts in grids.timestep_range():
-            # print(ts)
-            grids[ts] = np.nan
+def setup_input_data (arguments, config, data):
+
+    if os.path.isfile(arguments['--in-temperature']):
+        print('in file', arguments['--in-temperature'])
+        data['monthly-temperature'] = TemporalGrid(arguments['--in-temperature'])
+        print(data['monthly-temperature'])
+        # num_years = data['monthly-temperature'].config['num_timesteps'] // 12
+        # raster_metadata  = data['monthly-temperature'].config['raster_metadata'] 
     else:
-        raise IOError('Could not create or load grid')
-    return grids
-
-
-def configure_paths(arguments):
-    """
-    """
-   
-    #     print('\t', sort_method)
-
-    paths = { 
-        'temperature': arguments['--temperature-data'],
-        'fdd': None,
-        'tdd':  None,
-        'roots':  None,
-        'logging':  None,
-    }
-
-    if arguments['--out-directory']:
-        paths['fdd'] = os.path.join(arguments['--out-directory'], 'fdd')
-        paths['tdd'] = os.path.join(arguments['--out-directory'], 'tdd')
-        paths['roots'] = os.path.join(arguments['--out-directory'], 'roots')
-        paths['logging'] = os.path.join(arguments['--out-directory'], 'logs')
-    
-    elif arguments['--fdd-data'] and arguments['--tdd-data']:
-        paths['fdd'] = arguments['--fdd-data']
-        paths['tdd'] = arguments['--tdd-data']
-        paths['roots'] = arguments['--out-roots']
-        paths['logging'] = arguments['--logging-dir']
-    else:
-        print('Out directories  not specified. Use either:\n')
-        print('    --out-directory for a unified output directory\n')
-        print('  OR\n')
-        print('    --out-fdd, --out-tdd, --out-roots(optional) to specify\n')
-        print('    individual directories\n')
-
-    return paths
-
-
-def load_datasets(paths, arguments):
-
-
-    data = {}
-
-    if not arguments['--fill-holes']:
-        start_year = int(arguments['--start-year'])
-
-        # num_processes = int(arguments['--num-processes'])
-
         sort_method = "Using default sort function"
         sort_fn = sorted
 
@@ -151,255 +106,184 @@ def load_datasets(paths, arguments):
             print("run utility.py --help to see valid options")
             print("exiting")
             return
+        
+        num_years = len(
+            glob.glob(os.path.join(arguments['--in-temperature'],'*.tif')) 
+        ) 
+        num_years = num_years // 12
 
-        if arguments['--verbose'] >= 2:
-            print('Setting up input...')
+        years = [config['start_year'] + yr for yr in range(num_years)]
 
-        if os.path.isfile(arguments['--in-temperature']):
-            print('in file', arguments['--in-temperature'])
-            monthly_temps = TemporalGrid(arguments['--in-temperature'])
-            print(monthly_temps)
-            num_years = monthly_temps.config['num_timesteps'] // 12
-            raster_metadata  = monthly_temps.config['raster_metadata'] 
-        else:
-            num_years = len(
-                glob.glob(os.path.join(arguments['--in-temperature'],'*.tif')) 
-            ) 
-            num_years = num_years // 12
-
-            years = [start_year + yr for yr in range(num_years)]
-
-            temporal_grid_keys = [] 
-            for yr in years: 
-                for mn in range(1,13):
-                    temporal_grid_keys.append('%d-%02d' % (yr,mn) ) 
-            # print(glob.glob(arguments['--in-temperature']))
-            load_params = {
-                    "method": "tiff",
-                    "directory": arguments['--in-temperature'],
-                    "sort_func": sort_fn,
-                    "verbose": True if arguments['--verbose'] >= 2 else False,
-                    "filename": 'temp-in-temperature.data',
-                }
-            create_params = {
-                "name": "monthly temperatures",
-                "grid_names": temporal_grid_keys,
-                "start_timestep": datetime(arguments['--start-year'],1,1),
-                "delta_timestep": relativedelta(months=1)
-                
+        temporal_grid_keys = [] 
+        for yr in years: 
+            for mn in range(1,13):
+                temporal_grid_keys.append('%d-%02d' % (yr,mn) ) 
+        # print(glob.glob(arguments['--in-temperature']))
+        load_params = {
+                "method": "tiff",
+                "directory": arguments['--in-temperature'],
+                "sort_func": sort_fn,
+                "verbose": True if config['log']['verbose'] >= 2 else False,
+                "filename": 'temp-in-temperature.data',
             }
-
-            monthly_temps = load_and_create(load_params, create_params)
+        create_params = {
+            "name": "monthly temperatures",
+            "grid_names": temporal_grid_keys,
+            "start_timestep": datetime(arguments['--start-year'],1,1),
+            "delta_timestep": relativedelta(months=1)
             
-            ex_raster = glob.glob(
-                    os.path.join(arguments['--in-temperature'],'*.tif')
-                )[0]
-            raster_metadata = get_raster_metadata(ex_raster)
-            monthly_temps.config['raster_metadata'] = raster_metadata
+        }
 
-            if not arguments['--mask-val'] is None:
-                mask = arguments['--mask-val']
-                if arguments['--mask-comp']   == 'eq':
-                    no_data_idx =     monthly_temps.grids == mask
-                elif arguments['--mask-comp'] == 'ne':
-                    no_data_idx =     monthly_temps.grids != mask
-                elif arguments['--mask-comp'] == 'lt':
-                    no_data_idx =     monthly_temps.grids < mask
-                elif arguments['--mask-comp'] == 'gt':
-                    no_data_idx =     monthly_temps.grids > mask
-                elif arguments['--mask-comp'] == 'lte':
-                    no_data_idx =     monthly_temps.grids <= mask
-                elif arguments['--mask-comp'] == 'gte':
-                    no_data_idx =     monthly_temps.grids >= mask   
-                # elif arguments['--mask-comp'] == 'map':
-                #     no_data_idx = monthly_temps.grids == 0          
-                monthly_temps.grids[no_data_idx] = np.nan
-
-            
-                
-            monthly_temps.config['num_timesteps'] = \
-                monthly_temps.config['num_grids']
-            
-            monthly_temps.save('temp-monthly-temperature-data.yml')
+        data['monthly-temperature'] = load_and_create(load_params, create_params)
         
-        grid_shape = monthly_temps.config['grid_shape']
+        ex_raster = glob.glob(
+                os.path.join(arguments['--in-temperature'],'*.tif')
+            )[0]
+        raster_metadata = get_raster_metadata(ex_raster)
+        data['monthly-temperature'].config['raster_metadata'] = raster_metadata
 
-        data['temperature'] = monthly_temps
-        do_not_create = False
-    else:
-        grid_shape = None
-        num_years = None
-        start_year = None
-        raster_metadata = None
-        do_not_create = True
+        if not arguments['--mask-val'] is None:
+            mask = arguments['--mask-val']
+            if arguments['--mask-comp']   == 'eq':
+                no_data_idx =     data['monthly-temperature'].grids[0] == mask
+            elif arguments['--mask-comp'] == 'ne':
+                no_data_idx =     data['monthly-temperature'].grids[0] != mask
+            elif arguments['--mask-comp'] == 'lt':
+                no_data_idx =     data['monthly-temperature'].grids[0] < mask
+            elif arguments['--mask-comp'] == 'gt':
+                no_data_idx =     data['monthly-temperature'].grids[0] > mask
+            elif arguments['--mask-comp'] == 'lte':
+                no_data_idx =     data['monthly-temperature'].grids[0] <= mask
+            elif arguments['--mask-comp'] == 'gte':
+                no_data_idx =     data['monthly-temperature'].grids[0] >= mask           
+            
+            for gn in range(data['monthly-temperature'].grids.shape[0]):
+                data['monthly-temperature'].grids[gn][no_data_idx] = np.nan
 
 
-    data['fdd'] = create_or_load_dataset(
-        os.path.join(paths['fdd'], 'fdd.yml'), 
+        
+            
+        data['monthly-temperature'].config['num_timesteps'] = \
+            data['monthly-temperature'].config['num_grids']
+        
+        data['monthly-temperature'].save('temp-monthly-temperature-data.yml')
+
+def setup_output_data (arguments, config, data):
+
+    grid_shape = data['monthly-temperature'].config['grid_shape']
+    raster_metadata = data['monthly-temperature'].config['raster_metadata']
+    num_years = data['monthly-temperature'].config['num_timesteps'] // 12
+
+    data['fdd'], config['fdd_new'] = create_or_load_dataset(
+        config['directories']['fdd'], 
         grid_shape, 
         num_years, 
-        start_year, 
+        config['start_year'], 
         'freezing degree-day', 
-        raster_metadata,
-        do_not_create
+        raster_metadata
     )
 
-    data['tdd'] = create_or_load_dataset(
-        os.path.join(paths['tdd'], 'tdd.yml'), 
+    data['tdd'], config['tdd_new'] = create_or_load_dataset(
+        config['directories']['tdd'], 
         grid_shape, 
         num_years, 
-        start_year, 
+        config['start_year'], 
         'thawing degree-day', 
-        raster_metadata,
-        do_not_create
+        raster_metadata
     )
 
-    if not arguments['--fill-holes']:
-        data['roots'] = create_or_load_dataset(
-            os.path.join(paths['roots'], 'roots.yml'), 
-            grid_shape, 
-            num_years * 2, 
-            0, 
-            'spline-roots', 
-            raster_metadata
-        )
-        data['roots'].config['delta_timestep'] = "varies"
-
-    return data
-
-def fill_holes(fdd, tdd, arguments, log = {}):
-    """Calculates cells to interpolate and runs fdd and tdd datasets through 
-    correction process. 
-
-    Parameters
-    ----------
-    fdd:
-    tdd:
-    arguments: dict 
-        contains
-        --valid-area: path
-            path to raster containing integer mask of either aoi, or locations 
-            to fix. if mask is not integer data. Nan values are set to 0 and
-            others to 1. In other cases all values > 0 are to 1 as well
-        --area-type: String
-            'exact' if valid area is a precalculated mask with values of 1 were
-            interpolation should occurs and 0 otherwise.
-            'aoi': valid_area is a mask of the valid aoi, with this argument,
-            valid_area and missing data in the first timestep in fdd are used to 
-            calculate cells to fix. 
-        --hole-fill-method: function to use
-            by-interpolation is the only current option uses mean of cells in
-            kernel to fill missing value
-        --reset-bad-cells: bool
-            if true cells are set to np.nan before corrections are applied
-        --kernel-size: int, 1
-            size of kernel to use in correction process 
-
-    """
-    method = fill.METHODS[arguments['--hole-fill-method']]
-
-    
-    locations = raster.load_raster(arguments['--valid-area'])[0]
-
-    locations[np.isnan(locations)] = 0
-    locations[ locations>1 ]  = 1
-    locations = locations.astype(int)
-    if arguments['--area-type'] == 'aoi':
-        sample = fdd[fdd.config['start_timestep']]
-        
-        locations = np.logical_and(locations, np.isnan(sample))
-
-
-
-
-    print("Filling Holes in FDD data")
-    method(
-        fdd, locations, log, 
-        func=np.nanmean, 
-        reset_locations = arguments['--reset-bad-cells'],
-        loc_type = 'map', 
-        k_size = arguments['--kernel-size']
+    data['roots'], config['roots_new'] = create_or_load_dataset(
+        config['directories']['roots'], 
+        grid_shape, 
+        num_years * 2, 
+        0, 
+        'spline-roots', 
+        raster_metadata
     )
-    print("Filling Holes in TDD data")
-    method(
-        tdd, locations, log, 
-        func=np.nanmean, 
-        reset_locations = arguments['--reset-bad-cells'],
-        loc_type = 'map', 
-        k_size = arguments['--kernel-size']
-    )
+    data['roots'].config['delta_timestep'] = "varies"
 
-
-def main_utility(data, paths, arguments, log = {}):
-    """"""
-    print('starting')
+def calculate(arguments, config, data):
+    num_processes = int(arguments['--num-processes'])
 
     recalc_mask = None
     if not arguments['--recalc-mask-file'] is None:
         recalc_mask = np.load(arguments['--recalc-mask-file']).astype(int) == 1
+    
+    start_at = int(arguments['--start-at']) if arguments['--start-at'] else 0
 
-    calc_grid_degree_days (
-        data,
-        start = int(arguments['--start-at']) if arguments['--start-at'] else 0, 
-        num_process = int(arguments['--num-processes']),
-        log=log, 
-        logging_dir=paths['logging'],
-        use_fallback=arguments['--always-fallback'],
-        recalc_mask = recalc_mask,
+    calc_grid_degree_days(
+            data,
+            start = start_at, 
+            num_process = num_processes,
+            log=config['log'], 
+            logging_dir=config['directories']['logs'],
+            use_fallback=arguments['--always-fallback'],
+            recalc_mask = recalc_mask,
+            temp_dir = config['temp_results_dir'],
+            shared_memory = config['shared-mem']
     )
-
-    for item in log["Spline Errors"]:
+    
+    for item in config['log']["Spline Errors"]:
         words = item.split(' ')
         location = int(words[-1])
-        print ( grid_shape)
+        grid_shape = data['monthly-temperature'].config['grid_shape']
+        # print (grid_shape)
         row, col = np.unravel_index(location, grid_shape)  
 
         msg = ' '.join(words[:-1])
         msg += ' at row:' + str(row) + ', col:' + str(col) + '.'
         print(msg)
-
-def write_results(data, paths, arguments, log):
+    
+def save_results(arguments, config, data):
 
     if arguments['--out-format'] in ['tiff', 'both']:
-        data['tdd'].save_all_as_geotiff(paths['tdd'])
-        data['fdd'].save_all_as_geotiff(paths['fdd'])
-        if paths['roots'] != './temp-roots' and not arguments['--fill-holes']:: 
-            data['roots'].save_all_as_geotiff(paths['roots'])
+        tif_path = lambda x: os.path.join(config['directories'][x], 'tiff')
+        data['tdd'].save_all_as_geotiff(tif_path('fdd'))
+        data['fdd'].save_all_as_geotiff(tif_path('tdd'))
+        data['roots'].save_all_as_geotiff(tif_path('roots'))
     
     if arguments['--out-format'] == 'tiff':
-        os.remove(os.path.join(paths['tdd'], 'tdd.yml'))
-        filename = data['tdd'].grids.filename
-        os.remove(data['tdd'].filter_file) if data['tdd'].filter_file else None
-        os.remove(data['tdd'].mask_file) if data['tdd'].mask_file else None
-        del(data['tdd'])
+        yml_path = lambda x: os.path.join(config['directories'][x], '%s.yml' % x)
+        os.remove(yml_path('tdd'))
+        tdd = data['tdd']
+        filename = tdd.grids.filename
+        os.remove(tdd.filter_file) if tdd.filter_file else None
+        os.remove(tdd.mask_file) if tdd.mask_file else None
+        del(tdd)
         os.remove(filename)
 
-        os.remove(os.path.join(paths['fdd'], 'fdd.yml'))
-        filename = data['fdd'].grids.filename
-        os.remove(data['fdd'].filter_file) if data['fdd'].filter_file else None
-        os.remove(data['fdd'].mask_file) if data['fdd'].mask_file else None
-        del(data['fdd'])
+        os.remove(yml_path('fdd'))
+        fdd = data['fdd']
+        filename = fdd.grids.filename
+        os.remove(fdd.filter_file) if fdd.filter_file else None
+        os.remove(fdd.mask_file) if fdd.mask_file else None
+        del(fdd)
         os.remove(filename)
 
-        if not arguments['--fill-holes']:
-            os.remove(os.path.join(paths['roots'], 'roots.yml'))
-            filename = data['roots'].grids.filename
-            os.remove(data['roots'].filter_file) if data['roots'].filter_file else None
-            os.remove(data['roots'].mask_file) if data['roots'].mask_file else None
-            del(data['roots'])
-            # print(filename)
-            os.remove(filename)
+        os.remove(yml_path('roots'))
+        roots = data['roots']
+        filename = roots.grids.filename
+        os.remove(roots.filter_file) if roots.filter_file else None
+        os.remove(roots.mask_file) if roots.mask_file else None
+        del(roots)
+        # print(filename)
+        os.remove(filename)
         
         
 
     if arguments['--out-format'] in ['multigrid','both']:
-        data['fdd'].config['command-used-to-create'] = ' '.join(sys.argv)
-        data['tdd'].config['command-used-to-create'] = ' '.join(sys.argv)
-        # print(os.path.join(paths['fdd'], 'fdd.yml'))
-        data['fdd'].save(os.path.join(paths['fdd'], 'fdd.yml'))
-        data['tdd'].save(os.path.join(paths['tdd'], 'tdd.yml'))
-        if not arguments['--fill-holes']:
-            data['roots'].config['command-used-to-create'] = ' '.join(sys.argv)
-            data['roots'].save(os.path.join(out_roots, 'roots.yml'))
+        mg_path = lambda x: os.path.join(
+            config['directories'][x], 'multigrid', '%s.yml' % x
+        )
+        fdd.config['command-used-to-create'] = ' '.join(sys.argv)
+        tdd.config['command-used-to-create'] = ' '.join(sys.argv)
+        roots.config['command-used-to-create'] = ' '.join(sys.argv)
+        # print(os.path.join(out_fdd, 'fdd.yml'))
+        fdd.save(mg_path('fdd'))
+        tdd.save(mg_path('tdd'))
+        roots.save(mg_path('roots'))
 
-    
+    if not arguments['--save-temp-monthly']:
+        for file in glob.glob('temp-monthly-temperature-data.*'):
+            os.remove(file)
+
