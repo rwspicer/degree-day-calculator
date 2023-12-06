@@ -17,7 +17,7 @@ from multigrids import TemporalGrid
 from spicebox import CLILib
 from __init__ import __version__
 
-from multiprocessing import Manager, Lock, Process
+from multiprocessing import Manager, Lock, Process, active_children
 
 from sort import sort_snap_files
 
@@ -63,8 +63,11 @@ def write_results_worker(tdd, fdd, roots, temp_dir):
         fdd[:,row,col] = data['fdd']
         roots[:,row,col] = data['roots']
         del(data)
-        os.remove(_file)
-
+        try:
+            os.remove(_file)
+        except:
+            pass
+            
 def utility ():
     """Utility for calculating the freezing and thawing degree-days and saving
     them as tiffs. Uses as spline based method to find roots from monthly 
@@ -431,10 +434,14 @@ def utility ():
 
 
     temp_dir = 'temp_dd_arrays'
-    os.makedirs(temp_dir)
+    try:
+        os.makedirs(temp_dir)
+    except: 
+        pass
     writer = Process(
         target=write_results_worker, 
-        args=(tdd, fdd, roots, temp_dir))
+        args=(tdd, fdd, roots, temp_dir),
+        name = 'writer')
     writer.start()
 
     print('starting')
@@ -448,6 +455,7 @@ def utility ():
         'fdd': fdd,
         'roots': roots
     }
+    init_pids = set([p.pid for p in active_children()])
     calc_grid_degree_days (
         data,
         start = int(arguments['--start-at']) if arguments['--start-at'] else 0, 
@@ -456,7 +464,8 @@ def utility ():
         logging_dir=logging_dir,
         use_fallback=arguments['--always-fallback'],
         recalc_mask = recalc_mask,
-        temp_dir = temp_dir
+        temp_dir = temp_dir,
+        init_pids = init_pids
     )
     # calc_grid_degree_days(
     #         days, 

@@ -37,7 +37,8 @@ set_start_method('fork')
 
 def calc_degree_days_for_cell (
         index, monthly_temps, tdd, fdd, roots, method_map, lock = Lock(),
-        log={'verbose':0}, use_fallback = False, temp_dir='temp_dd_arrays'
+        log={'verbose':0}, use_fallback = False, temp_dir='temp_dd_arrays',
+        consecutive_smoothing_attempts=5
         ):
     """Caclulate degree days (thawing, and freezing) and store in to 
     a grid.
@@ -74,14 +75,26 @@ def calc_degree_days_for_cell (
     tdd_temp = []
     fdd_temp = []
     roots_temp = []
-
     
+    last_roots = -1
+    smoothing_count = 0
     if len(spline.roots()) != expected_roots:
-        for sf in range(1,51):
+        for sf in range(1,26): # absolute max attempts
+
+            if smoothing_count == consecutive_smoothing_attempts: # 
+                # relative max attempts, I.E. len_roots nolonger changing
+                break # at top for corrcet max attempts
             
             spline.set_smoothing_factor(sf)
-            # print('->>', expected_roots,len(spline.roots()), use_fallback)
+            # print('->>', expected_roots,len(spline.roots()), use_fallback, last_roots, smoothing_count)
             len_roots = len(spline.roots())  ## make really explicit to avoid bugs
+            if len_roots == last_roots:
+                smoothing_count+=1
+            else:
+                smoothing_count = 0
+            
+            last_roots = len_roots
+
             if len_roots == expected_roots:
                 break
 
@@ -180,7 +193,7 @@ def calc_degree_days_for_cell (
     
     # tdd = np.arrtdd))
     # fdd = np.array(len(fdd))
-    lock.acquire()
+    # lock.acquire()
     
     # tdd[:, row, col] = np.array(tdd_temp)
     
@@ -194,7 +207,7 @@ def calc_degree_days_for_cell (
     # the dummy or patital value for fdd[ly] (this is fdd_temp[:1] below), 
     # and adding the last good value fdd[ly-1]( which is fdd_temp[-2]).  
     fdd_temp = fdd_temp[:-1] + [fdd_temp[-2]] 
-
+    # print(fdd_temp, tdd_temp,roots_temp)
 
     # fdd[:,row, col] = np.array( fdd_temp )
                                         
@@ -212,7 +225,8 @@ def calc_degree_days_for_cell (
     #     pass # not sure why this is here but it looks good
     #     print ("NEW_ERROR at", index,":", str(e))
 
-    lock.release()
+    # lock.release()
+    [gc.collect(i) for i in range(3)]
 
 def calc_grid_degree_days (
         data,
@@ -222,6 +236,7 @@ def calc_grid_degree_days (
         use_fallback=False,
         recalc_mask = None,
         temp_dir = None,
+        init_pids = set()
     ):
     """Calculate degree days (Thawing, and Freezing) for an area. 
     
@@ -274,9 +289,9 @@ def calc_grid_degree_days (
     roots = data['roots']
     w_lock = Lock()
     
-    if num_process == 1:
-        num_process += 1 # need to have a better fix?
-    elif num_process is None:
+    # if num_process == 1:
+    #     num_process += 1 # need to have a better fix?
+    if num_process is None:
        num_process = cpu_count()
 
     shape=monthly_temps.config['grid_shape']
@@ -306,7 +321,7 @@ def calc_grid_degree_days (
 
     indices = np.where(indices)[0]
     
-
+    
 
 
 
@@ -314,12 +329,16 @@ def calc_grid_degree_days (
     indices = indices[indices > start]
 
     n_cells = shape[0] * shape[1]
+    print('starting')
 
     with Bar('Calculating Degree-days',  max=n_cells, suffix='%(percent)d%% - %(index)d / %(max)d') as bar:
         for idx in indices: # flatted area grid index
             row, col = np.unravel_index(idx, shape)
-            while len(active_children()) >= num_process:
-                continue
+            # print(row,col, num_process)
+            if num_process != 1:
+                while len(active_children()) >= num_process:
+                    
+                    continue
             [gc.collect(i) for i in range(3)] # garbage collection
             # log['Element Messages'].append(
             #     'calculating degree days for element ' + str(idx) + \
@@ -358,14 +377,22 @@ def calc_grid_degree_days (
             bar.index = idx-1
             bar.next()
     
-    while len(active_children()) > 0 :
-        if len(active_children()) == 1:
-            from multiprocessing.managers import DictProxy
-            if type(log) is DictProxy:
-                # this means the log is probably locking things up 
-                break
-            
-        continue
+
+    # import time
+    if num_process != 1:
+        print('waiting for processing to complete')
+        # while len(active_children()) > 0 :
+        while set([p.pid for p in active_children()]) != init_pids:
+
+            # print(active_children())
+            time.sleep(10)
+            # if len(active_children()) == 1:
+            #     from multiprocessing.managers import DictProxy
+            #     if type(log) is DictProxy:
+            #         # this means the log is probably locking things up 
+            #         break
+                
+            continue
 
     if logging_dir:
         try: 
